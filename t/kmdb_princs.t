@@ -134,8 +134,8 @@ ok($result->{policy} eq 'default', qq{service policy is ``default''});
 ok($result->{principal} eq $sprinc, qq{query returned correct princ});
 compare_princ_to_attrs($result, [], "service has correct attributes");
 compare_keys($result, [
-		{enctype=>17,kvno=>2},
 		{enctype=>18,kvno=>2},
+		{enctype=>20,kvno=>2},
 	], "service has correct key types 1");
 
 #
