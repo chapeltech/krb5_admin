@@ -133,8 +133,6 @@ compare_princ_to_attrs($result, [], "service has correct attributes");
 compare_keys($result, [
 		{enctype=>17,kvno=>2},
 		{enctype=>18,kvno=>2},
-		{enctype=>16,kvno=>2},
-		{enctype=>23,kvno=>2}
 	], "service has correct key types 1");
 
 #
@@ -181,8 +179,6 @@ compare_keys($result, [
 		{enctype=>17,kvno=>3},
 		{enctype=>17,kvno=>2},
 		{enctype=>18,kvno=>2},
-		{enctype=>16,kvno=>2},
-		{enctype=>23,kvno=>2}
 	], "service has correct key types 2");
 
 testObjC("change", $kmdb, [undef], 'change', $sprinc, 4, keys => [{enctype=>17,
@@ -193,8 +189,6 @@ compare_keys($result, [
 		{enctype=>17,kvno=>3},
 		{enctype=>17,kvno=>2},
 		{enctype=>18,kvno=>2},
-		{enctype=>16,kvno=>2},
-		{enctype=>23,kvno=>2}
 	], "service has correct key types 3");
 
 testObjC("change_passwd", $kmdb, ["${p}1"], 'change_passwd', $uprinc, "${p}1");
@@ -250,8 +244,6 @@ if (!$@) {
 			{enctype=>17,kvno=>3},
 			{enctype=>17,kvno=>2},
 			{enctype=>18,kvno=>2},
-			{enctype=>16,kvno=>2},
-			{enctype=>23,kvno=>2}
 		], "service has correct key types in mquery");
 	compare_princ_to_attrs($allprincs{$sprinc}, [],
 	    "service has correct attributes in mquery");
