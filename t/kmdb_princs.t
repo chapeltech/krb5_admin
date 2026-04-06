@@ -36,6 +36,9 @@ sub compare_keys {
 		}
 	}
 
+print STDERR "compare_keys: lhs = " . Dumper(%lhs) . "\n";
+print STDERR "compare_keys: rhs = " . Dumper(%rhs) . "\n";
+
 	is_deeply(\%lhs, \%rhs, $testname);
 }
 
