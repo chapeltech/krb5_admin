@@ -1242,13 +1242,10 @@ sub mk_kt_dir {
 	}
 
 	my $target;
-	$target = substr($realktdir, length($realroot));
-	$target =~ s#^/##;
-	$target =~ s#[^/][^/]*#..#g;
-	$target .= "/etc/krb5.keytab";
+	$target = "../$ktdir/root";
 
-	force_symlink($target, "$ktdir/" .  '%{username}');
-	force_symlink($target, "$ktdir/root");
+	force_symlink("root",  "$ktdir/" .  '%{username}');
+	force_symlink($target, "$ktroot/etc/krb5.keytab");
 }
 
 #
@@ -1265,8 +1262,7 @@ sub get_kt {
 	$user = 'root'				 if !defined($user) ||
 						    $user eq '';
 	return "$prefix$self->{ktdir}/$user"	 if defined($self->{ktdir});
-	return "$prefix/var/spool/keytabs/$user" if $user ne 'root';
-	return "$prefix/etc/krb5.keytab";
+	return "$prefix/var/spool/keytabs/$user";
 }
 
 sub get_init_kt {
