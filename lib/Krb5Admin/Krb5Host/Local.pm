@@ -8,11 +8,12 @@ use base qw/Krb5Admin::Krb5Host CURVE25519_NWAY::Kerberos/;
 use Cwd;
 use IO::File;
 use File::Basename;
+use File::Copy qw(copy);
 use File::Find;
 use File::Path;
-use File::Temp qw/ :mktemp /;
+use File::Temp qw/ :mktemp tempfile /;
 use Fcntl ':flock';
-use POSIX qw(strftime);
+use POSIX qw(setgid setuid strftime);
 use Sys::Hostname;
 use Sys::Syslog;
 use Time::HiRes qw(gettimeofday sleep);
@@ -34,6 +35,7 @@ use warnings;
 
 our $DEFAULT_KEYTAB = '/etc/krb5.keytab';
 our $KRB5_KEYTAB_CONFIG = '@@KRB5_KEYTAB_CONF@@';
+our $HEIMTOOLS = '@@KRB5DIR@@/bin/heimtools';
 our $KINIT    = '@@KRB5DIR@@/bin/kinit';
 our @KINITOPT = qw(@@KINITOPT@@ -l 10m -F);
 our $hostname = hostname();
@@ -71,6 +73,7 @@ our %kt_opts = (
 	invoking_user		=> undef,
 	kadmin			=> 0,
 	keytab_retries		=> 3,
+	certdir			=> ['/var/spool/certs'],
 	kmdb			=> undef,	# XXXrcd: more logic
 	kmdb_config		=> '/etc/krb5/krb5_admind.conf',
 	kmdb_config_provided	=> 0,
@@ -473,9 +476,11 @@ sub install_ticket {
 	my ($realm, $user) = @princ;
 
 	my @errs;
+	my @installed;
 	for my $t (@$tixdir) {
 		if (ref($t) eq '') {
-			$self->install_ticket_in_dir($realm, $user, undef, $tix, $t);
+			push(@installed, [ $self->install_ticket_in_dir(
+			    $realm, $user, undef, $tix, $t) ]);
 			next;
 		}
 
@@ -505,11 +510,38 @@ sub install_ticket {
 			die "\$tixdir hashes must specify ``path''";
 		}
 
-		$self->install_ticket_in_dir($realm, $user, $uid, $tix,
-		    $t->{path});
+		push(@installed, [ $self->install_ticket_in_dir(
+		    $realm, $user, $uid, $tix, $t->{path}) ]);
 	}
 
 	die join(', ', @errs) if @errs > 0;
+
+	return if @installed == 0;
+
+	$self->install_cert($realm, @{$installed[0]});
+}
+
+sub setup_realm_spool_dir {
+	my ($self, $realm, $dir, $what) = @_;
+	my $defrealm = $self->get_defrealm();
+
+	mkdir($dir, 0755);
+	chmod(0755, $dir);
+
+	my @st = stat($dir);
+	if ($st[4] ne '0') {
+		die "Will not install $what to non-root-owned directory!";
+	}
+
+	force_symlink(".", "$dir/\@$defrealm");
+
+	if ($realm ne $defrealm) {
+		$dir .= "/\@$realm";
+		mkdir($dir, 0755);
+		chmod(0755, $dir);
+	}
+
+	return $dir;
 }
 
 sub install_ticket_in_dir {
@@ -524,23 +556,8 @@ sub install_ticket_in_dir {
 	#
 	# XXXrcd: may not always be able to create $tixdir?
 
-	my $defrealm = $self->get_defrealm();
-
-	mkdir($tixdir, 0755);
-	chmod(0755, $tixdir);
-
-	my @st = stat($tixdir);
-	if ($st[4] ne '0') {
-		die "Will not prestash to non-root-owned directory!";
-	}
-
-	force_symlink(".", "$tixdir/\@$defrealm");
-
-	if ($realm ne $defrealm) {
-		$tixdir .= "/\@$realm";
-		mkdir($tixdir, 0755);
-		chmod(0755, $tixdir);
-	}
+	$tixdir = $self->setup_realm_spool_dir($realm, $tixdir,
+	    "prestashed tickets");
 
 	if (!defined($name) || $name ne $user) {
 		die "Tickets received for illegal username: %s", $user
@@ -579,7 +596,106 @@ sub install_ticket_in_dir {
 	rename($alt_tmp, $alt_fn) or
 		die "$0: rename($alt_tmp, $alt_fn): $!\n";
 
-	return;
+	return ($user, $uid, $ccache_fn);
+}
+
+sub install_cert {
+	my ($self, $realm, $user, $uid, $ccache_fn) = @_;
+	my $certdir = $self->{certdir};
+
+	return if !defined($certdir);
+
+	for my $c (@$certdir) {
+		if (ref($c) eq '') {
+			$self->install_cert_in_dir($realm, $user, $uid,
+			    $ccache_fn, $c);
+			next;
+		}
+
+		if (ref($c) ne 'HASH') {
+			die "install_cert: Can't grok \$certdir " .
+			    "(from config)\n";
+		}
+
+		my $cert_uid = $uid;
+		if (defined($c->{username})) {
+			my ($name, $passwd, $cuid) = getpwnam($c->{username});
+			die "$c->{username} has no uid from \$certdir\n"
+			    if !defined($cuid);
+			$cert_uid = $cuid;
+		}
+
+		die "\$certdir hashes must specify ``path''"
+		    if !defined($c->{path});
+
+		$self->install_cert_in_dir($realm, $user, $cert_uid,
+		    $ccache_fn, $c->{path});
+	}
+}
+
+sub install_cert_in_dir {
+	my ($self, $realm, $user, $uid, $ccache_fn, $certdir) = @_;
+
+	$certdir = $self->setup_realm_spool_dir($realm, $certdir,
+	    "prestashed certificates");
+
+	my $cert_fn = "$certdir/$user";
+	my $cert_tmp = "$certdir/.$user";
+	my ($fh, $work_fn) = tempfile("krb5_prestash-kx509-XXXXXXXX",
+	    DIR => "/tmp", UNLINK => 0);
+	close($fh) or die "$0: close($work_fn): $!\n";
+	chmod(0600, $work_fn);
+
+	my ($run_uid) = (stat($ccache_fn))[4];
+	die "$0: stat($ccache_fn): $!\n" if !defined($run_uid);
+	my (undef, undef, undef, $run_gid) = getpwuid($run_uid);
+	die "$0: uid $run_uid has no passwd entry\n" if !defined($run_gid);
+	chown($run_uid, $run_gid, $work_fn) or
+	    die "$0: chown($work_fn): $!\n";
+
+	my $cmd = kx509_command();
+	my $ccache = "FILE:$ccache_fn";
+	my $store = "PEM-FILE:$work_fn";
+
+	my $ret = system_as_uid($run_uid, $run_gid, $cmd, "kx509",
+	    "-c", $ccache, "-o", $store);
+	if ($ret != 0) {
+		unlink($work_fn);
+		die "failed to install client certificate for $user: " .
+		    "$cmd kx509 exited with $ret\n";
+	}
+
+	unlink($cert_tmp);
+	copy($work_fn, $cert_tmp) or
+	    die "$0: copy($work_fn, $cert_tmp): $!\n";
+	unlink($work_fn);
+	chown($uid, 0, $cert_tmp);
+	chmod(0600, $cert_tmp);
+	rename($cert_tmp, $cert_fn) or
+	    die "$0: rename($cert_tmp, $cert_fn): $!\n";
+}
+
+sub kx509_command {
+
+	return $HEIMTOOLS if -x $HEIMTOOLS;
+	return "heimtools";
+}
+
+sub system_as_uid {
+	my ($uid, $gid, @cmd) = @_;
+
+	my $pid = fork();
+	die "$0: fork: $!\n" if !defined($pid);
+
+	if ($pid == 0) {
+		setgid($gid) or die "$0: setgid($gid): $!\n";
+		setuid($uid) or die "$0: setuid($uid): $!\n";
+		exec @cmd;
+		die "$0: exec($cmd[0]): $!\n";
+	}
+
+	waitpid($pid, 0);
+	return $?;
 }
 
 sub fetch_tickets_realm {
@@ -1972,7 +2088,7 @@ sub install_key_fetch_locked {
 		return if !$self->need_new_key($kt, $strprinc);
 	}
 
-	$self->vprint("installing (legacy): $strprinc\n");
+	$self->vprint("installing (compat): $strprinc\n");
 
 	$kmdb->master()		if $action eq 'change';
 
