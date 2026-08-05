@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh prestashed Kerberos credentials
+Documentation=man:krb5_prestash(1)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/krb5_prestash fetch
+UMask=0077
+TimeoutStartSec=30m

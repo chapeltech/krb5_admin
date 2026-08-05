@@ -1,0 +1,14 @@
+[Unit]
+Description=Kerberos host daemon local socket
+Documentation=man:krb5_hostd(8)
+
+[Socket]
+ListenStream=/run/krb5_hostd
+SocketMode=0600
+SocketUser=root
+SocketGroup=root
+RemoveOnStop=yes
+Service=krb5-hostd.service
+
+[Install]
+WantedBy=sockets.target

@@ -1,0 +1,12 @@
+[Unit]
+Description=Kerberos host daemon KNC socket
+Documentation=man:knc(1) man:krb5_hostd(8)
+Requires=krb5-hostd.socket
+After=krb5-hostd.socket
+
+[Socket]
+ListenStream=2666
+Service=krb5-hostd-knc.service
+
+[Install]
+WantedBy=sockets.target

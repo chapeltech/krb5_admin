@@ -1,0 +1,13 @@
+[Unit]
+Description=Nightly prestashed Kerberos credential refresh
+Documentation=man:krb5_prestash(1)
+
+[Timer]
+OnCalendar=*-*-* 02:00:00
+RandomizedDelaySec=4h
+FixedRandomDelay=yes
+Persistent=yes
+Unit=krb5-prestash.service
+
+[Install]
+WantedBy=timers.target

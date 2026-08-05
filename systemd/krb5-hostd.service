@@ -1,0 +1,13 @@
+[Unit]
+Description=Kerberos host daemon
+Documentation=man:krb5_hostd(8)
+Requires=krb5-hostd.socket
+After=krb5-hostd.socket
+
+[Service]
+Type=simple
+Sockets=krb5-hostd.socket
+StandardInput=socket
+ExecStart=/usr/libexec/prefork /usr/sbin/krb5_hostd -P
+Restart=on-failure
+RestartSec=5s
