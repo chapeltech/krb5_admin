@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+if ! getent passwd krb5notify >/dev/null; then
+	adduser --system --group --no-create-home krb5notify
+fi
+
+#DEBHELPER#

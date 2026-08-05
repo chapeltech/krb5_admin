@@ -1,10 +1,18 @@
 #!/usr/bin/make -f
 
+include /usr/share/dpkg/architecture.mk
+
+PERL_VENDOR_ARCH := $(shell perl -MConfig -le 'print $$Config{installvendorarch};')
+
+ifneq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
+PERL_VENDOR_ARCH := $(subst $(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH),$(PERL_VENDOR_ARCH))
+endif
+
 %:
 	dh $@
 
 override_dh_auto_install:
-	set -e; PERLLIB=$(shell perl -MConfig -le 'print $$Config{installvendorarch};'); \
+	set -e; PERLLIB=$(PERL_VENDOR_ARCH); \
 	for file in libkrb5admin-perl.install; \
 	do \
 		sed -e"s,\$${PERLLIB},$${PERLLIB#/},g" \
@@ -20,6 +28,15 @@ override_dh_auto_install:
 
 override_dh_strip:
 	: "don't"
+
+override_dh_auto_test:
+	perl -Iblib/lib -Iblib/arch -c scripts/prestash-notify
+	dh_auto_test
+
+override_dh_install:
+	dh_install
+	dh_installsystemd -plibkrb5admin-perl \
+	    krb5-hostd.socket krb5-hostd-knc.socket krb5-prestash.timer
 
 override_dh_builddeb:
 	dh_builddeb -- -Zgzip

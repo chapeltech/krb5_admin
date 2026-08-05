@@ -35,6 +35,12 @@ usr/bin/krb5_host
 usr/sbin/krb5_hostd
 usr/sbin/krb5_admind
 usr/bin/prestash-notify
+systemd/krb5-hostd.service usr/lib/systemd/system
+systemd/krb5-hostd.socket usr/lib/systemd/system
+systemd/krb5-hostd-knc.service usr/lib/systemd/system
+systemd/krb5-hostd-knc.socket usr/lib/systemd/system
+systemd/krb5-prestash.service usr/lib/systemd/system
+systemd/krb5-prestash.timer usr/lib/systemd/system
 usr/share/man/man3/Krb5Admin::KerberosDB.3pm
 usr/share/man/man3/Krb5Admin::Client.3pm
 usr/share/man/man3/CURVE25519_NWAY.3pm
