@@ -11,6 +11,20 @@
 
 #ifdef HAVE_HEIMDAL
 
+#undef warn		/* Conflict between Perl and <err.h> via <hdb.h> */
+#undef vwarn		/* Conflict between Perl and <err.h> via <hdb.h> */
+#ifdef HEIMDAL_INCLUDES_IN_KRB5
+#include <krb5/hdb.h>
+#include <krb5/hdb_err.h>
+#include <krb5/der.h>
+#else
+#include <hdb.h>
+#include <hdb_err.h>
+#include <der.h>
+#endif
+#define warn Perl_warn	/* Conflict between Perl and <err.h> via <hdb.h> */
+#define vwarn Perl_vwarn/* Conflict between Perl and <err.h> via <hdb.h> */
+
 /* krb5_keyblock stuff */
 #define	KEYBLOCK_ENCTYPE(k)	((k).keytype)
 #define	KEYBLOCK_CONTENT_LEN(k)	((k).keyvalue.length)
@@ -201,7 +215,9 @@ krb5_keyblock		*krb5_derive_namespace_key(krb5_context, char *, int,
 						   krb5_keyblock *);
 kadm5_principal_ent_rec	 krb5_query_princ(krb5_context, kadm5_handle, char *);
 kadm5_handle		 krb5_get_kadm5_hndl(krb5_context, char *,
-					     const char *);
+						     const char *);
+kadm5_handle		 krb5_get_kadm5_hndl_ext_sqlite(krb5_context, char *,
+							const char *, void *, int);
 krb5_error_code		 kadm5_destroy(kadm5_handle);
 
 void	 krb5_modprinc(krb5_context, kadm5_handle, kadm5_principal_ent_rec,

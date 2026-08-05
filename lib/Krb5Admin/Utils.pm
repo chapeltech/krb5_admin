@@ -66,6 +66,7 @@ sub mk_kmdb_with_config {
 		win_xrealm_bootstrap	=> $config->{win_xrealm_bootstrap},
 		prestash_xrealm		=> $config->{prestash_xrealm},
 		sqlite			=> $config->{sqlite},
+		sqlite_shared_hdb	=> $config->{sqlite_shared_hdb},
 		dbname			=> $config->{dbname},
 	);
 
@@ -148,6 +149,7 @@ sub load_config {
 	$config->{dbname}		//= $dbname;
 	$config->{testing}		  = $testing;
 	$config->{sqlite}		//= $sqlite;
+	$config->{sqlite_shared_hdb}	//= $sqlite_shared_hdb;
 	$config->{lockdir}		  = $lockdir;
 	$config->{allow_fetch}		  = $allow_fetch;
 	$config->{allow_fetch_old}	  = $allow_fetch_old;

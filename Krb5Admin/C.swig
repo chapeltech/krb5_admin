@@ -3,6 +3,22 @@
 
 #include "C.h"
 
+#ifdef HAVE_HEIMDAL
+#include <string.h>
+#include "DBIXS.h"
+typedef struct sqlite3 sqlite3;
+
+struct krb5admin_dbd_sqlite_dbh {
+	dbih_dbc_t	 com;
+	sqlite3		*db;
+};
+
+DBISTATE_DECLARE;
+
+extern kadm5_handle krb5_get_kadm5_hndl_ext_sqlite(krb5_context, char *,
+    const char *, void *, int);
+#endif
+
 /*
  * First we define lots of nasty macros to put things in and get things
  * out of hashes quickly:
@@ -69,6 +85,10 @@
 
 
 %}
+
+%typemap(in) SV * {
+	$1 = $input;
+}
 
 %typemap(in,numinputs=0) krb5_context *OUTPUT {
 	$1 = calloc(sizeof(krb5_context), 1);
@@ -800,6 +820,44 @@ done:
 	$1 = SvPV($input, len);
 	$2 = (int) len;
 }
+
+#ifdef HAVE_HEIMDAL
+%inline %{
+kadm5_handle
+krb5_get_kadm5_hndl_dbi_sqlite(krb5_context ctx, char *dbname,
+    const char *princstr, SV *dbh, int create_schema)
+{
+	struct krb5admin_dbd_sqlite_dbh	*imp_dbh;
+	HV				*stash;
+	SV				*size_sv;
+	UV				 imp_size;
+	const char			*stash_name;
+
+	if (DBIS == NULL)
+		DBISTATE_INIT;
+
+	size_sv = get_sv("DBD::SQLite::db::imp_data_size", 0);
+	if (size_sv == NULL || !SvOK(size_sv))
+		croak("DBD::SQLite is not loaded");
+
+	imp_size = SvUV(size_sv);
+	if (imp_size < sizeof(*imp_dbh))
+		croak("DBD::SQLite handle layout is not supported");
+
+	imp_dbh = (struct krb5admin_dbd_sqlite_dbh *)DBIh_COM(dbh);
+	if (imp_dbh == NULL || imp_dbh->db == NULL)
+		croak("DBI handle is not an active DBD::SQLite handle");
+
+	stash = DBIc_IMP_STASH(imp_dbh);
+	stash_name = stash == NULL ? NULL : HvNAME(stash);
+	if (stash_name == NULL || strcmp(stash_name, "DBD::SQLite::db") != 0)
+		croak("DBI handle is not a DBD::SQLite database handle");
+
+	return krb5_get_kadm5_hndl_ext_sqlite(ctx, dbname, princstr,
+	    imp_dbh->db, create_schema);
+}
+%}
+#endif
 
 
 %perlcode %{

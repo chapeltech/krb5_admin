@@ -3,6 +3,7 @@
 
 use Config;
 use ExtUtils::MakeMaker;
+use DBI ();
 
 use strict;
 use warnings;
@@ -42,6 +43,9 @@ if (-f "$KRB5DIR/include/krb5/hdb.h") {
 	$HAVE .= ' -DHEIMDAL_INCLUDES_IN_KRB5';
 }
 
+my $DBIDIR = $INC{'DBI.pm'};
+$DBIDIR =~ s/DBI\.pm$/auto\/DBI/;
+
 # XXXrcd: we still need to deal with this one:
 #  $HAVE	.= ' -DHAVE_CTX_IN_KADM5';
 
@@ -51,7 +55,7 @@ $args{NAME}	= 'Krb5Admin::C';
 $args{OBJECT}	= 'C_wrap.o C.o curve25519-donna.o hkdf.o hmac.o sha1.o ' .
 		  'sha224-256.o sha384-512.o shatest.o usha.o';
 
-$args{INC}	= "-I${KRB5DIR}/include";
+$args{INC}	= "-I${KRB5DIR}/include -I${DBIDIR}";
 
 $args{PM}	= { 'C.pm' => '$(INST_LIB)/Krb5Admin/C.pm' };
 
@@ -87,4 +91,3 @@ $rfc6234_files: rfc6234.txt
 
 EOM
 }
-
