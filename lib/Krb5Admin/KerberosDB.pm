@@ -174,7 +174,7 @@ sub acl_keytab {
 	} else {
 		($name, $kvno, @args) = @predicate;
 		if (@args == 1) {
-			# XXXrcd: legacy usage.
+			# XXXrcd: compatibility usage.
 			# XXXmsw: copy/pasted
 			%args = (keys => $args[0]);
 		} else {
@@ -1714,7 +1714,7 @@ sub change {
 
 	my %args;
 	if (@args == 1) {
-		# XXXrcd: legacy usage.
+		# XXXrcd: compatibility usage.
 		%args = (keys => $args[0]);
 	} else {
 		%args = @args;
