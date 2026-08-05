@@ -34,6 +34,63 @@
 int		curve25519_donna(uint8_t *, const uint8_t *, const uint8_t *);
 static int	keyblock_num_keys(krb5_keyblock *);
 
+#ifdef HAVE_HEIMDAL
+static krb5_error_code
+compat_krb5_crypto_prfplus(krb5_context ctx, krb5_crypto crypto,
+    const krb5_data *input, size_t len, krb5_data *output)
+{
+	krb5_error_code	 ret;
+	krb5_data	 prf_in;
+	krb5_data	 prf_out;
+	size_t		 offset = 0;
+	unsigned char	 counter = 1;
+
+	memset(output, 0, sizeof(*output));
+	memset(&prf_in, 0, sizeof(prf_in));
+	memset(&prf_out, 0, sizeof(prf_out));
+
+	ret = krb5_data_alloc(output, len);
+	if (ret)
+		return ret;
+
+	while (offset < len) {
+		unsigned char	*inbuf;
+		size_t		 chunk;
+
+		ret = krb5_data_alloc(&prf_in, input->length + 1);
+		if (ret)
+			goto fail;
+
+		inbuf = prf_in.data;
+		inbuf[0] = counter++;
+		memcpy(inbuf + 1, input->data, input->length);
+
+		ret = krb5_crypto_prf(ctx, crypto, &prf_in, &prf_out);
+		krb5_data_free(&prf_in);
+		if (ret)
+			goto fail;
+
+		chunk = prf_out.length;
+		if (chunk > len - offset)
+			chunk = len - offset;
+		memcpy((unsigned char *) output->data + offset, prf_out.data,
+		    chunk);
+		offset += chunk;
+		krb5_data_free(&prf_out);
+	}
+
+	return 0;
+
+fail:
+	krb5_data_free(&prf_in);
+	krb5_data_free(&prf_out);
+	krb5_data_free(output);
+	return ret;
+}
+
+#define krb5_crypto_prfplus compat_krb5_crypto_prfplus
+#endif
+
 kadm5_handle
 krb5_get_kadm5_hndl(krb5_context ctx, char *dbname, const char *princstr)
 {
@@ -1454,6 +1511,45 @@ init_store_creds(krb5_context ctx, char *ccname, krb5_creds *creds)
 done:
 	if (ret)
 		croak("%s", croakstr);
+}
+
+void
+kx509(krb5_context ctx, krb5_creds *creds, char *realm, char *store)
+{
+#ifdef HAVE_HEIMDAL
+	krb5_kx509_req_ctx	 req = NULL;
+	krb5_ccache		 ccache = NULL;
+	krb5_error_code		 ret = 0;
+	char			 croakstr[2048] = "";
+
+	if (!creds)
+		croak("kx509: missing credentials");
+	if (!store || !store[0])
+		croak("kx509: missing certificate store");
+
+	/* Avoid reopening the installed FILE cache after it is user-owned. */
+	K5BAIL(krb5_cc_new_unique(ctx, krb5_cc_type_memory, NULL, &ccache));
+	K5BAIL(krb5_cc_initialize(ctx, ccache, creds->client));
+	K5BAIL(krb5_cc_store_cred(ctx, ccache, creds));
+	K5BAIL(krb5_kx509_ctx_init(ctx, &req));
+	if (realm && realm[0])
+		K5BAIL(krb5_kx509_ctx_set_realm(ctx, req, realm));
+	K5BAIL(krb5_kx509_ext(ctx, req, ccache, store, NULL));
+
+done:
+	if (req)
+		krb5_kx509_ctx_free(ctx, &req);
+	if (ccache)
+		krb5_cc_destroy(ctx, ccache);
+	if (ret)
+		croak("%s", croakstr);
+#else
+	(void)ctx;
+	(void)creds;
+	(void)realm;
+	(void)store;
+	croak("kx509 is not implemented for MIT Kerberos");
+#endif
 }
 
 #ifdef HAVE_HEIMDAL

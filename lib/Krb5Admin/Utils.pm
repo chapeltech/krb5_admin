@@ -104,6 +104,7 @@ sub mk_krb5host_with_config {
 		ktdir		 => $config->{ktdir},
 		lockdir		 => $config->{lockdir},
 		tixdir		 => $config->{tixdir},
+		certdir		 => $config->{certdir},
 
 		kmdb_config	 => $config->{kmdb_config},
 		kmdb_config_provided => $config->{kmdb_config_provided},
@@ -184,6 +185,7 @@ sub load_krb5hostd_config {
 	$config->{lockdir}		  =  $lockdir;
 	$config->{ext_sync_func}	  =  $ext_sync_func;
 	$config->{tixdir}		  =  $tixdir;
+	$config->{certdir}		  =  $certdir;
 	$config->{testing}		  =  $testing;
 	$config->{kmdb_config}		  =  $kmdb_config;
 

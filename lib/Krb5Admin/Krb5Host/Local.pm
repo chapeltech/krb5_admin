@@ -10,7 +10,7 @@ use IO::File;
 use File::Basename;
 use File::Find;
 use File::Path;
-use File::Temp qw/ :mktemp /;
+use File::Temp qw/ :mktemp tempfile /;
 use Fcntl ':flock';
 use POSIX qw(strftime);
 use Sys::Hostname;
@@ -71,6 +71,7 @@ our %kt_opts = (
 	invoking_user		=> undef,
 	kadmin			=> 0,
 	keytab_retries		=> 3,
+	certdir			=> ['/var/spool/certs'],
 	kmdb			=> undef,	# XXXrcd: more logic
 	kmdb_config		=> '/etc/krb5/krb5_admind.conf',
 	kmdb_config_provided	=> 0,
@@ -473,9 +474,11 @@ sub install_ticket {
 	my ($realm, $user) = @princ;
 
 	my @errs;
+	my @installed;
 	for my $t (@$tixdir) {
 		if (ref($t) eq '') {
-			$self->install_ticket_in_dir($realm, $user, undef, $tix, $t);
+			push(@installed, [ $self->install_ticket_in_dir(
+			    $realm, $user, undef, $tix, $t) ]);
 			next;
 		}
 
@@ -505,11 +508,38 @@ sub install_ticket {
 			die "\$tixdir hashes must specify ``path''";
 		}
 
-		$self->install_ticket_in_dir($realm, $user, $uid, $tix,
-		    $t->{path});
+		push(@installed, [ $self->install_ticket_in_dir(
+		    $realm, $user, $uid, $tix, $t->{path}) ]);
 	}
 
 	die join(', ', @errs) if @errs > 0;
+
+	return if @installed == 0;
+
+	$self->install_cert($realm, $tix, @{$installed[0]});
+}
+
+sub setup_realm_spool_dir {
+	my ($self, $realm, $dir, $what) = @_;
+	my $defrealm = $self->get_defrealm();
+
+	mkdir($dir, 0755);
+	chmod(0755, $dir);
+
+	my @st = stat($dir);
+	if ($st[4] ne '0') {
+		die "Will not install $what to non-root-owned directory!";
+	}
+
+	force_symlink(".", "$dir/\@$defrealm");
+
+	if ($realm ne $defrealm) {
+		$dir .= "/\@$realm";
+		mkdir($dir, 0755);
+		chmod(0755, $dir);
+	}
+
+	return $dir;
 }
 
 sub install_ticket_in_dir {
@@ -524,23 +554,8 @@ sub install_ticket_in_dir {
 	#
 	# XXXrcd: may not always be able to create $tixdir?
 
-	my $defrealm = $self->get_defrealm();
-
-	mkdir($tixdir, 0755);
-	chmod(0755, $tixdir);
-
-	my @st = stat($tixdir);
-	if ($st[4] ne '0') {
-		die "Will not prestash to non-root-owned directory!";
-	}
-
-	force_symlink(".", "$tixdir/\@$defrealm");
-
-	if ($realm ne $defrealm) {
-		$tixdir .= "/\@$realm";
-		mkdir($tixdir, 0755);
-		chmod(0755, $tixdir);
-	}
+	$tixdir = $self->setup_realm_spool_dir($realm, $tixdir,
+	    "prestashed tickets");
 
 	if (!defined($name) || $name ne $user) {
 		die "Tickets received for illegal username: %s", $user
@@ -579,7 +594,76 @@ sub install_ticket_in_dir {
 	rename($alt_tmp, $alt_fn) or
 		die "$0: rename($alt_tmp, $alt_fn): $!\n";
 
-	return;
+	return ($user, $uid);
+}
+
+sub install_cert {
+	my ($self, $realm, $tix, $user, $uid) = @_;
+	my $certdir = $self->{certdir};
+
+	return if !defined($certdir);
+
+	for my $c (@$certdir) {
+		if (ref($c) eq '') {
+			$self->install_cert_in_dir($realm, $tix, $user, $uid,
+			    $c);
+			next;
+		}
+
+		if (ref($c) ne 'HASH') {
+			die "install_cert: Can't grok \$certdir " .
+			    "(from config)\n";
+		}
+
+		my $cert_uid = $uid;
+		if (defined($c->{username})) {
+			my ($name, $passwd, $cuid) = getpwnam($c->{username});
+			die "$c->{username} has no uid from \$certdir\n"
+			    if !defined($cuid);
+			$cert_uid = $cuid;
+		}
+
+		die "\$certdir hashes must specify ``path''"
+		    if !defined($c->{path});
+
+		$self->install_cert_in_dir($realm, $tix, $user, $cert_uid,
+		    $c->{path});
+	}
+}
+
+sub install_cert_in_dir {
+	my ($self, $realm, $tix, $user, $uid, $certdir) = @_;
+
+	$certdir = $self->setup_realm_spool_dir($realm, $certdir,
+	    "prestashed certificates");
+
+	my $cert_fn = "$certdir/$user";
+	my ($fh, $cert_tmp) = tempfile(".$user.XXXXXXXX",
+	    DIR => $certdir, UNLINK => 0);
+	if (!close($fh)) {
+		my $err = $!;
+		unlink($cert_tmp);
+		die "$0: close($cert_tmp): $err\n";
+	}
+
+	my $store = "PEM-FILE:$cert_tmp";
+	my $ok = eval {
+		chmod(0600, $cert_tmp) or
+		    die "$0: chmod($cert_tmp): $!\n";
+		Krb5Admin::C::kx509($self->{ctx}, $tix, $realm, $store);
+		chown($uid, 0, $cert_tmp) or
+		    die "$0: chown($cert_tmp): $!\n";
+		chmod(0600, $cert_tmp) or
+		    die "$0: chmod($cert_tmp): $!\n";
+		rename($cert_tmp, $cert_fn) or
+		    die "$0: rename($cert_tmp, $cert_fn): $!\n";
+		1;
+	};
+	if (!$ok) {
+		my $err = $@;
+		unlink($cert_tmp);
+		die "failed to install client certificate for $user: $err";
+	}
 }
 
 sub fetch_tickets_realm {
