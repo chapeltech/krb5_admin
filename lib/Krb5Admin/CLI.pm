@@ -102,6 +102,7 @@ sub CMD_help {
 	$self->print( <<EOM );
 General commands:
 
+	ca			outputs the realm CA certificate
 	master			returns the name of the master KDC
 
 Commands that operate on principals and appids:
@@ -179,6 +180,13 @@ sub FORMAT_change_passwd {
 	my ($self, $cmd, $args, $ret) = @_;
 
 	$self->print("Changed passwd to '$ret'\n");
+	return 0;
+}
+
+sub FORMAT_ca {
+	my ($self, $cmd, $args, $ret) = @_;
+
+	$self->print($ret);
 	return 0;
 }
 

@@ -1036,6 +1036,20 @@ sub KHARON_ACL_master { return 1; }
 
 sub master { hostname(); }
 
+sub KHARON_IV_ca { KHARON_IV_NO_ARGS(@_); }
+sub KHARON_ACL_ca { return 1; }
+
+sub ca {
+	my $file = '/etc/krb5/ca-pub.pem';
+
+	open(my $fh, '<', $file) or die "Can't open $file: $!\n";
+	local $/;
+	my $ca = <$fh>;
+	close($fh) or die "Can't close $file: $!\n";
+
+	return $ca;
+}
+
 sub KHARON_IV_has_feature	{ KHARON_IV_ONE_SCALAR(@_); }
 sub KHARON_ACL_has_feature	{ return 1; }
 

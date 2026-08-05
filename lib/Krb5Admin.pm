@@ -65,6 +65,7 @@ our @KHARON_RW_SC_EXPORT = qw/	add_acl
 			     /;
 
 our @KHARON_RO_SC_EXPORT = qw/	is_appid_owner
+				ca
 				fetch_tickets
 				has_feature
 				query
