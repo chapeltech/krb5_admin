@@ -452,7 +452,7 @@ sub new {
 	# We provide a default to deleg_to and then convert it into a hash
 	# for fast and succint lookups.
 
-	$self->{deleg_to}	//= ["host"];
+	$self->{deleg_to}	//= [];
 	$self->{deleg_to}	  = { map { $_ => 1 } (@{$self->{deleg_to}}) };
 
 	$self->connect_kadm5();
