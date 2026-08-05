@@ -54,6 +54,7 @@ make -j1 V=1 VERBOSE=1
 perl -Iblib/lib -Iblib/arch -c scripts/prestash-notify
 
 %install
+export QA_RPATHS=3
 KRB5TYPE=heimdal KRB5DIR=/opt/heimdal make install DESTDIR=%{buildroot} INSTALLDIRS=vendor
 find %{buildroot} -type f \( -name .packlist -o -name perllocal.pod \) -delete
 if [ -d %{buildroot}%{_prefix}/man ]; then
