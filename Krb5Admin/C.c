@@ -477,7 +477,6 @@ krb5_createkey(krb5_context ctx, kadm5_handle hndl, char *in,
 	       krb5_keyblock *keys)
 {
 	kadm5_principal_ent_rec	 dprinc;
-	krb5_key_salt_tuple	 enctypes[8];
 	kadm5_config_params	 params;
 	krb5_principal		 princ = NULL;
 	kadm5_ret_t		 ret;
@@ -498,14 +497,8 @@ krb5_createkey(krb5_context ctx, kadm5_handle hndl, char *in,
 	 * We first the principal disallowing all tickets.  We do this,
 	 * because there is no standard mechanism shared between MIT and
 	 * Heimdal to create a principal directly with keys random or
-	 * otherwise.  We use rc4-hmac only because it has the fastest
-	 * string2key function and as we are not going to ever use the
-	 * passwd that we specify, we prefer to waste as little CPU as
-	 * possible on generating the keys.  In case there is any doubt
-	 * about the utility of doing this, we ran some experiments on
-	 * our laptop and noted that running 1000 krb5_createkey()s before
-	 * our change took 26.45s with 24.18s user time.  After the change
-	 * the same test took 5.80s with 0.40s user.
+	 * otherwise.  The configured Kerberos defaults select the initial
+	 * and final key types.
 	 */
 
 	for (i=0; i < sizeof(dummybuf) - 1; i++)
@@ -513,33 +506,17 @@ krb5_createkey(krb5_context ctx, kadm5_handle hndl, char *in,
 
 	dummybuf[i] = '\0';
 
-	enctypes[0].ks_enctype = ENCTYPE_ARCFOUR_HMAC;
-	enctypes[0].ks_salttype = SALTTYPE_NORMAL;
-
 	dprinc.principal = princ;
 	dprinc.attributes = KRB5_KDB_DISALLOW_ALL_TIX;
 	K5BAIL(kadm5_create_principal_3(hndl, &dprinc, KADM5_PRINCIPAL|
-	     KADM5_ATTRIBUTES, 1, enctypes, dummybuf));
+	     KADM5_ATTRIBUTES, 0, NULL, dummybuf));
 
 	if (keyblock_num_keys(keys)) {
 		K5BAIL(kadm5_setkey_principal_3(hndl, princ, FALSE, 0, NULL,
 		    keys, keyblock_num_keys(keys)));
 	} else {
-		/*
-		 * XXXrcd: for now, hardcode AES, DES3 and RC4, we'll take this
-		 *         out later, when we can update the configuration.
-		 */
-		enctypes[0].ks_enctype  = ENCTYPE_AES256_CTS_HMAC_SHA1_96;
-		enctypes[0].ks_salttype = SALTTYPE_NORMAL;
-		enctypes[1].ks_enctype  = ENCTYPE_AES128_CTS_HMAC_SHA1_96;
-		enctypes[1].ks_salttype = SALTTYPE_NORMAL;
-		enctypes[2].ks_enctype  = ENCTYPE_ARCFOUR_HMAC;
-		enctypes[2].ks_salttype = SALTTYPE_NORMAL;
-		enctypes[3].ks_enctype  = ENCTYPE_DES3_CBC_SHA1;
-		enctypes[3].ks_salttype = SALTTYPE_NORMAL;
-
 		K5BAIL(kadm5_randkey_principal_3(hndl, dprinc.principal, 0,
-		    4, enctypes, NULL, NULL));
+		    0, NULL, NULL, NULL));
 	}
 
 	dprinc.attributes &= ~KRB5_KDB_DISALLOW_ALL_TIX;
