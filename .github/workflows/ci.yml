@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  HEIMDAL_REPOSITORY: ChapelTech/heimdal
+  HEIMDAL_RELEASE: v7.99.1
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download Heimdal
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir dependencies
+          gh release download "$HEIMDAL_RELEASE" \
+            --repo "$HEIMDAL_REPOSITORY" \
+            --pattern 'heimdal_*_amd64.deb' \
+            --dir dependencies
+          test "$(find dependencies -name 'heimdal_*_amd64.deb' | wc -l)" -eq 1
+          test "$(dpkg-deb -f dependencies/heimdal_*_amd64.deb Architecture)" = amd64
+      - name: Build and test
+        run: |
+          docker run --rm \
+            -v "$PWD:/src:ro" \
+            -v "$PWD/dependencies:/dependencies:ro" \
+            debian:trixie-slim /bin/sh -euxc '
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                build-essential libdbd-sqlite3-perl libdbi-perl perl swig
+              apt-get install -y /dependencies/heimdal_*_amd64.deb
+              cp -a /src /tmp/krb5_admin
+              cd /tmp/krb5_admin
+              perl Makefile.PL
+              make -j1
+              sed "s/__HOSTNAME__/$(hostname)/g" \
+                t/krb5.conf.in > t/krb5.conf
+              prove -b t/curve25519.t t/getkdc.t t/getrealm.t
+            '

@@ -7,6 +7,7 @@ URL:            https://github.com/elric1/krb5_admin
 Source0:        krb5_admin-%{version}.tar.gz
 
 BuildRequires:  gcc
+BuildRequires:  e2fsprogs-devel
 BuildRequires:  heimdal
 BuildRequires:  knc
 BuildRequires:  libkharon-perl >= 0.8

@@ -1,0 +1,168 @@
+name: Release packages
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  HEIMDAL_REPOSITORY: ChapelTech/heimdal
+  HEIMDAL_RELEASE: v7.99.1
+  KNC_REPOSITORY: ChapelTech/knc
+  KNC_RELEASE: v1.12
+  KHARON_REPOSITORY: ChapelTech/kharon
+  KHARON_RELEASE: v0.8.4
+  PREFORK_REPOSITORY: ChapelTech/prefork
+  PREFORK_RELEASE: v0.3
+
+jobs:
+  debian:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Check release version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          version=${RELEASE_TAG#v}
+          debian_version=$(sed -n '1s/.*(\([^)]*\)).*/\1/p' debian/changelog)
+          rpm_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+            packaging/rpm/libkrb5admin-perl.spec)
+          test "$version" = "${debian_version%%-*}"
+          test "$version" = "$rpm_version"
+      - name: Download Debian dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/dependencies/debian
+          gh release download "$HEIMDAL_RELEASE" \
+            --repo "$HEIMDAL_REPOSITORY" \
+            --pattern 'heimdal_*_amd64.deb' \
+            --dir build/dependencies/debian
+          gh release download "$KNC_RELEASE" \
+            --repo "$KNC_REPOSITORY" \
+            --pattern 'knc_*_amd64.deb' \
+            --pattern 'libknc_*_amd64.deb' \
+            --pattern 'libknc-dev_*_amd64.deb' \
+            --dir build/dependencies/debian
+          gh release download "$KHARON_RELEASE" \
+            --repo "$KHARON_REPOSITORY" \
+            --pattern 'libkharon-perl_*_amd64.deb' \
+            --dir build/dependencies/debian
+          gh release download "$PREFORK_RELEASE" \
+            --repo "$PREFORK_REPOSITORY" \
+            --pattern 'prefork_*_amd64.deb' \
+            --dir build/dependencies/debian
+          for package in build/dependencies/debian/*.deb; do
+            test "$(dpkg-deb -f "$package" Architecture)" = amd64
+          done
+      - name: Build Debian packages
+        run: |
+          mkdir -p build/debian/source
+          git archive HEAD | tar -x -C build/debian/source
+          docker run --rm \
+            -v "$PWD/build:/build" \
+            -w /build/debian/source \
+            debian:trixie-slim /bin/sh -euxc '
+              apt-get update -qq
+              apt-get install -y --no-install-recommends \
+                build-essential debhelper dh-autoreconf dpkg-dev file \
+                libdbd-sqlite3-perl libdbi-perl perl sqlite3 swig
+              apt-get install -y /build/dependencies/debian/*.deb
+              DEB_BUILD_OPTIONS="nocheck parallel=1" \
+                dpkg-buildpackage --build=binary --no-sign
+            '
+          mkdir artifacts
+          cp build/debian/*.deb artifacts/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: debian-packages
+          path: artifacts/*.deb
+          if-no-files-found: error
+          retention-days: 1
+
+  rpm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - name: Download EL9 dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build/dependencies/rpm
+          gh release download "$HEIMDAL_RELEASE" \
+            --repo "$HEIMDAL_REPOSITORY" \
+            --pattern 'heimdal-[0-9]*.x86_64.rpm' \
+            --dir build/dependencies/rpm
+          gh release download "$KNC_RELEASE" \
+            --repo "$KNC_REPOSITORY" \
+            --pattern 'knc-[0-9]*.x86_64.rpm' \
+            --pattern 'libknc-[0-9]*.x86_64.rpm' \
+            --pattern 'libknc-devel-[0-9]*.x86_64.rpm' \
+            --dir build/dependencies/rpm
+          gh release download "$KHARON_RELEASE" \
+            --repo "$KHARON_REPOSITORY" \
+            --pattern 'libkharon-perl-[0-9]*.x86_64.rpm' \
+            --dir build/dependencies/rpm
+          gh release download "$PREFORK_RELEASE" \
+            --repo "$PREFORK_REPOSITORY" \
+            --pattern 'prefork-[0-9]*.x86_64.rpm' \
+            --dir build/dependencies/rpm
+      - name: Build EL9 packages
+        run: |
+          mkdir -p build/rpm/SOURCES build/rpm/RPMS build/rpm/SRPMS
+          version=$(sed -n 's/^Version:[[:space:]]*//p' \
+            packaging/rpm/libkrb5admin-perl.spec)
+          git archive --prefix="krb5_admin-$version/" HEAD | \
+            gzip -n > "build/rpm/SOURCES/krb5_admin-$version.tar.gz"
+          docker run --rm \
+            -v "$PWD:/source:ro" \
+            -v "$PWD/build:/build" \
+            rockylinux:9 /bin/bash -euxc '
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb
+              dnf install -y \
+                e2fsprogs-devel file gcc make patchelf perl \
+                perl-DBD-SQLite perl-DBI \
+                perl-ExtUtils-MakeMaker perl-devel perl-generators \
+                redhat-rpm-config rpm-build sqlite swig systemd-rpm-macros
+              expected=$(rpm --eval "%{_arch}")
+              for package in /build/dependencies/rpm/*.rpm; do
+                test "$(rpm -qp --qf "%{ARCH}" "$package")" = "$expected"
+              done
+              dnf install -y /build/dependencies/rpm/*.rpm
+              rpmbuild -ba \
+                --define "_topdir /build/rpm" \
+                /source/packaging/rpm/libkrb5admin-perl.spec
+            '
+          mkdir artifacts
+          cp build/rpm/RPMS/*/*.rpm artifacts/
+          cp build/rpm/SRPMS/*.src.rpm artifacts/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm-packages
+          path: artifacts/*rpm
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: [debian, rpm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Upload packages to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$RELEASE_TAG" artifacts/* --clobber
