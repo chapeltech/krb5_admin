@@ -1,57 +1,30 @@
-#!/bin/bash
+#!/bin/sh
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
+export PATH
 
-if [[ -d /etc/postfix-prestash ]]; then
-    echo "Already configured"
-    exit 1
+set -eu
+
+if [ ! -d /etc/postfix-prestash ]; then
+	postmulti -e init
+	postmulti -e create -I postfix-prestash
+	postconf -c /etc/postfix-prestash -e \
+	    'authorized_submit_users = root' \
+	    'mydestination =' \
+	    'alias_maps =' \
+	    'alias_database =' \
+	    'local_recipient_maps =' \
+	    'local_transport = error:5.1.1 Mailbox invalid' \
+	    'default_transport = prestash:$myhostname' \
+	    'export_environment = TZ MAIL_CONFIG LANG'
+
+	cat >> /etc/postfix-prestash/master.cf <<'EOF'
+prestash unix  -       n       n       -       -       pipe
+  flags=hu user=krb5notify argv=/usr/bin/prestash-notify ${domain}
+EOF
+	postmulti -e enable -i prestash
 fi
 
-
-set -e
-
-# Fix Debian breakage, their dynamicmaps support does not work with
-# multi-instance postfix
-#
-
-
-openssl base64 -d  << 'PATCH' | gunzip -c | patch /usr/lib/postfix/postmulti-script
-H4sIAAXuqFIAA62TS4/TMBSF1+2vuOp0AUqdV0vTh0AFgdBsBgmEWCLXuZmasZ3I
-dspUGv47TtKEtunAhiiKa9+ec+3vJIQQCEqjA8G3QZEbm/HHepSlsJwYpnlh/Vzz
-+0EcRlMSunsOUbIKZ6sw9MP2Aq96Dj3P+7dd4xTFJIogjlez6Woa+eFysYwXSfTq
-6LTZAImmy8kcvGpIYLMZwsDKIuX69ZjlKuP3391vZDbXh8B3FVd/UUpqHiBMkjXI
-B1cGUsC4Ub2EpyfAR24hcv9kRV1KKcpcnRhJypXPslbUzf9ovaM2QMu6M6YHRSVn
-khbmVH2xfLIBt4Ub+LKjGlPgylgqBBRUU4kWtQG3DkzkylUznUsoDWpiCmQ8425t
-T0WJxglrG7tDSDGjjnHjpRhOYFtayJU4AM9c10Jwxq2bGbSVQKMPn6rxJzc4aXAv
-5jXuRdLifh6Scbs8x9SunEKW+x7HfnR9whfCrtcVab+rdyq+jKXn8HxAAy2r9+fo
-BPGbIMV9oEohhlBdv1yGFbU4iR0uL05mR2pN+QZuVR1M07LU1PJcQdcZtGO6R/hR
-mjoPaDFQlUJ3rtYr4wKNPyTVbPz+w7uvH0FLIBm4z3f0Fy6j69W60+jsTN7/tb5S
-O0c96hPtutff7bXuoyogF83429vPd/00V1AIpAZhj5pnhwq9RWVNzfTIe3uAnZs2
-Hdfr4W8CyjSnAQUAAA==
-PATCH
-
-# Enable multi-instance support.
-#
-postmulti -e init
-
-# Create and configure slave instance
-#
-postmulti -e create -I postfix-prestash
-postmulti -i prestash -x postconf -e 'authorized_submit_users = root'
-postmulti -i prestash -x postconf -e 'mydestination ='
-postmulti -i prestash -x postconf -e 'alias_maps ='
-postmulti -i prestash -x postconf -e 'alias_database ='
-postmulti -i prestash -x postconf -e 'local_recipient_maps ='
-postmulti -i prestash -x postconf -e 'local_transport = error:5.1.1 Mailbox invalid'
-postmulti -i prestash -x postconf -e 'default_transport = prestash:$myhostname'
-
-# Add prestash transport
-#
-printf 'prestash   unix  -       n       n       -       -       pipe\n  flags=hu user=krb5notify argv=/usr/bin/prestash-notify ${domain}' >> /etc/postfix-prestash/master.cf
-
-postconf -e -c /etc/postfix-prestash/ export_environment="TZ MAIL_CONFIG LANG KRB5CCNAME=/var/spool/tickets/krb5notify"
-
-# Start the second instance.
-#
-postmulti -e enable -i prestash
-postmulti -i prestash -p start
+if ! postmulti -i prestash -p status >/dev/null 2>&1; then
+	postmulti -i prestash -p start
+fi

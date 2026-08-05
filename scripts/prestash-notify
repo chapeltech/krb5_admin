@@ -11,11 +11,12 @@ use Data::Dumper;
 my $uname = getpwuid($<);
 my $fqdn = hostname();
 
-my $KINIT="/opt/heimdal/bin/kinit";
+my ($KINIT) = grep { -x } qw(/usr/bin/kinit /opt/heimdal/bin/kinit);
 my $KTAB ="/var/spool/keytabs/$uname";
 my $PRINC="$uname/$fqdn";
 
 if (!defined($ENV{'KRB5CCNAME'})) {
+	die "cannot find kinit\n" if !defined($KINIT);
 	print "Execing\n";
 	exec($KINIT, "-kt", $KTAB, $PRINC, $0, @ARGV);
 	exit(1);
