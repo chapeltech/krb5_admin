@@ -128,7 +128,7 @@ jobs:
               dnf install -y dnf-plugins-core epel-release
               dnf config-manager --set-enabled crb
               dnf install -y \
-                e2fsprogs-devel file gcc make patchelf perl \
+                e2fsprogs-devel file gcc make perl \
                 perl-DBD-SQLite perl-DBI \
                 perl-ExtUtils-MakeMaker perl-devel perl-generators \
                 redhat-rpm-config rpm-build sqlite swig systemd-rpm-macros

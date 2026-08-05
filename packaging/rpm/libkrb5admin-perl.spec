@@ -3,7 +3,7 @@ Version:        0.4.3
 Release:        6%{?dist}
 Summary:        Perl Kerberos administration library and tools
 License:        MIT
-URL:            https://github.com/elric1/krb5_admin
+URL:            https://github.com/chapeltech/krb5_admin
 Source0:        krb5_admin-%{version}.tar.gz
 
 BuildRequires:  gcc
@@ -12,7 +12,6 @@ BuildRequires:  heimdal
 BuildRequires:  knc
 BuildRequires:  libkharon-perl >= 0.8
 BuildRequires:  make
-BuildRequires:  patchelf
 BuildRequires:  perl
 BuildRequires:  perl-DBD-SQLite
 BuildRequires:  perl-DBI
@@ -67,11 +66,6 @@ install -pm0644 systemd/*.service systemd/*.socket systemd/*.timer \
     %{buildroot}%{_unitdir}/
 install -pm0644 systemd/80-krb5-admin.preset \
     %{buildroot}%{_presetdir}/80-krb5-admin.preset
-find %{buildroot} -type f -print0 | while IFS= read -r -d '' file; do
-    if file "$file" | grep -q 'ELF'; then
-        patchelf --remove-rpath "$file" 2>/dev/null || true
-    fi
-done
 find %{buildroot} -depth -type d -empty -delete
 test -f %{buildroot}%{_bindir}/krb5_setup_postfix
 find %{buildroot} \( -type f -o -type l \) \
