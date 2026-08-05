@@ -1,3 +1,11 @@
+libkrb5admin-perl (0.4.3-1) unstable; urgency=medium
+
+  * Build against distro Heimdal and publish Trixie amd64 and arm64 packages.
+  * Correct client runtime dependencies and release automation.
+  * Skip certificate prestashing when distro Heimdal lacks kx509 support.
+
+ -- ChapelTech <packages@chapel.tech>  Wed, 05 Aug 2026 21:12:08 +0100
+
 libkrb5admin-perl (0.4.3) unstable; urgency=low
 
   * forgot a file in the debian packaging

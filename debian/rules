@@ -3,6 +3,10 @@
 include /usr/share/dpkg/architecture.mk
 
 PERL_VENDOR_ARCH := $(shell perl -MConfig -le 'print $$Config{installvendorarch};')
+PERL_VENDOR_LIB := $(shell perl -MConfig -le 'print $$Config{installvendorlib};')
+KRB5_ENV := KRB5TYPE=heimdal KRB5DIR=/usr \
+	KRB5INCDIR=/usr/include/heimdal \
+	KRB5LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/heimdal
 
 ifneq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
 PERL_VENDOR_ARCH := $(subst $(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH),$(PERL_VENDOR_ARCH))
@@ -11,26 +15,29 @@ endif
 %:
 	dh $@
 
+override_dh_auto_configure:
+	$(KRB5_ENV) dh_auto_configure
+	cd Krb5Admin && $(KRB5_ENV) perl Makefile.PL \
+	    INSTALLDIRS=vendor PREFIX=/usr
+
 override_dh_auto_install:
-	set -e; PERLLIB=$(PERL_VENDOR_ARCH); \
+	set -e; PERL_VENDOR_ARCH=$(PERL_VENDOR_ARCH); \
+	PERL_VENDOR_LIB=$(PERL_VENDOR_LIB); \
 	for file in libkrb5admin-perl.install; \
 	do \
-		sed -e"s,\$${PERLLIB},$${PERLLIB#/},g" \
+		sed -e"s,\$${PERL_VENDOR_ARCH},$${PERL_VENDOR_ARCH#/},g" \
+		    -e"s,\$${PERL_VENDOR_LIB},$${PERL_VENDOR_LIB#/},g" \
 			debian/$${file}.in > debian/$$file; \
 	done
-	if [ -e usr/lib/perl5/auto/Krb5Admin/C/C.bs ]; then \
-	    printf "%s %s\n" \
-		"usr/lib/perl5/auto/Krb5Admin/C/C.bs" \
-		'$${PERLLIB}/auto/Krb5Admin/C' \
-		>> libkrb5admin-perl.install; \
-	fi
 	dh_auto_install
+	$(MAKE) -C Krb5Admin install DESTDIR=$(CURDIR)/debian/tmp
 
 override_dh_strip:
 	: "don't"
 
 override_dh_auto_test:
-	perl -Iblib/lib -Iblib/arch -c scripts/prestash-notify
+	perl -Iblib/lib -Iblib/arch -IKrb5Admin/blib/lib \
+	    -IKrb5Admin/blib/arch -c scripts/prestash-notify
 	dh_auto_test
 
 override_dh_install:

@@ -1,6 +1,6 @@
 Name:           libkrb5admin-perl
 Version:        0.4.3
-Release:        6%{?dist}
+Release:        7%{?dist}
 Summary:        Perl Kerberos administration library and tools
 License:        MIT
 URL:            https://github.com/chapeltech/krb5_admin
@@ -8,8 +8,7 @@ Source0:        krb5_admin-%{version}.tar.gz
 
 BuildRequires:  gcc
 BuildRequires:  e2fsprogs-devel
-BuildRequires:  heimdal
-BuildRequires:  knc
+BuildRequires:  heimdal-devel
 BuildRequires:  libkharon-perl >= 0.8
 BuildRequires:  make
 BuildRequires:  perl
@@ -22,7 +21,8 @@ BuildRequires:  sqlite
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  swig
 
-Requires:       heimdal
+Requires:       heimdal-libs
+Requires:       heimdal-workstation
 Requires:       knc
 Requires:       libkharon-perl >= 0.8
 Requires:       perl-DBD-SQLite
@@ -37,25 +37,34 @@ administration.
 %package kdc
 Summary:        KDC helper for libkrb5admin-perl
 Requires:       %{name} = %{version}-%{release}
+Requires:       heimdal-server
 Requires:       postfix
+Requires(pre):  shadow-utils
 
 %description kdc
 The libkrb5admin-perl-kdc package contains KDC-side helper tooling.
 
 %prep
 %autosetup -n krb5_admin-%{version}
-sed -i 's#-L${KRB5DIR}/lib -Wl,-R${KRB5DIR}/lib#-L${KRB5DIR}/lib64 -Wl,-rpath,${KRB5DIR}/lib64#' Krb5Admin/Makefile.PL
 
 %build
-KRB5TYPE=heimdal KRB5DIR=/opt/heimdal perl Makefile.PL INSTALLDIRS=vendor PREFIX=%{_prefix}
+KRB5TYPE=heimdal KRB5DIR=/usr/lib/heimdal \
+KRB5INCDIR=/usr/include/heimdal KRB5LIBDIR=%{_libdir}/heimdal/lib \
+    perl Makefile.PL INSTALLDIRS=vendor PREFIX=%{_prefix}
+(cd Krb5Admin && \
+    KRB5TYPE=heimdal KRB5DIR=/usr/lib/heimdal \
+    KRB5INCDIR=/usr/include/heimdal KRB5LIBDIR=%{_libdir}/heimdal/lib \
+    perl Makefile.PL INSTALLDIRS=vendor PREFIX=%{_prefix})
 make -j1 V=1 VERBOSE=1
 
 %check
-perl -Iblib/lib -Iblib/arch -c scripts/prestash-notify
+perl -Iblib/lib -Iblib/arch -IKrb5Admin/blib/lib \
+    -IKrb5Admin/blib/arch -c scripts/prestash-notify
 
 %install
 export QA_RPATHS=3
-KRB5TYPE=heimdal KRB5DIR=/opt/heimdal make install DESTDIR=%{buildroot} INSTALLDIRS=vendor
+make install DESTDIR=%{buildroot} INSTALLDIRS=vendor
+make -C Krb5Admin install DESTDIR=%{buildroot} INSTALLDIRS=vendor
 find %{buildroot} -type f \( -name .packlist -o -name perllocal.pod \) -delete
 if [ -d %{buildroot}%{_prefix}/man ]; then
     mkdir -p %{buildroot}%{_mandir}
@@ -100,6 +109,10 @@ fi
 %license debian/copyright
 
 %changelog
+* Wed Aug 05 2026 ChapelTech <packages@chapel.tech> - 0.4.3-7
+- Build against EPEL Heimdal and correct client runtime dependencies.
+- Skip certificate prestashing because EPEL Heimdal lacks kx509 support.
+
 * Wed Aug 05 2026 ChapelTech <packages@chapel.tech> - 0.4.3-6
 - Fix the prestash notification worker on Debian and Rocky.
 
