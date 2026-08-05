@@ -1513,10 +1513,20 @@ done:
 		croak("%s", croakstr);
 }
 
+int
+have_kx509(void)
+{
+#ifdef HAVE_KX509
+	return 1;
+#else
+	return 0;
+#endif
+}
+
 void
 kx509(krb5_context ctx, krb5_creds *creds, char *realm, char *store)
 {
-#ifdef HAVE_HEIMDAL
+#ifdef HAVE_KX509
 	krb5_kx509_req_ctx	 req = NULL;
 	krb5_ccache		 ccache = NULL;
 	krb5_error_code		 ret = 0;
@@ -1548,7 +1558,7 @@ done:
 	(void)creds;
 	(void)realm;
 	(void)store;
-	croak("kx509 is not implemented for MIT Kerberos");
+	croak("kx509 is not implemented by this Kerberos installation");
 #endif
 }
 

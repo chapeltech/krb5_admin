@@ -601,6 +601,7 @@ sub install_cert {
 	my ($self, $realm, $tix, $user, $uid) = @_;
 	my $certdir = $self->{certdir};
 
+	return if !Krb5Admin::C::have_kx509();
 	return if !defined($certdir);
 
 	for my $c (@$certdir) {

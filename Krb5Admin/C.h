@@ -205,6 +205,7 @@ char	**krb5_list_princs(krb5_context, kadm5_handle, char *);
 char	**krb5_list_pols(krb5_context, kadm5_handle, char *);
 
 void	  init_store_creds(krb5_context, char *, krb5_creds *);
+int	  have_kx509(void);
 void	  kx509(krb5_context, krb5_creds *, char *, char *);
 
 krb5_error_code		 init_kdb(krb5_context, kadm5_handle);
@@ -233,8 +234,13 @@ krb5_error_code	krb5_init_context(krb5_context *OUTPUT);
 void		krb5_free_context(krb5_context);
 void		my_free_ctx(krb5_context *);
 krb5_error_code	krb5_parse_name(krb5_context, const char *, krb5_principal *);
+#ifdef HEIMDAL_MUTABLE_STRING_TO_KEY
+krb5_error_code krb5_string_to_key(krb5_context, krb5_enctype, const char *,
+				   krb5_principal, krb5_keyblock *OUTPUT);
+#else
 krb5_error_code krb5_string_to_key(krb5_context, krb5_enctype, const char *,
 				   krb5_const_principal, krb5_keyblock *OUTPUT);
+#endif
 int		kt_kvno(krb5_context, char *, char *);
 
 char	**curve25519_pass1(krb5_context);
