@@ -1,0 +1,3 @@
+usr/lib/asgard/libexec
+usr/lib/asgard/sbin
+usr/lib/*/asgard/lib/ipc_csr_authorizer.so

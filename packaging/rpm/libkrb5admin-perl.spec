@@ -1,6 +1,6 @@
 Name:           libkrb5admin-perl
 Version:        0.4.3
-Release:        8%{?dist}
+Release:        9%{?dist}
 Summary:        Perl Kerberos administration library and tools
 License:        MIT
 URL:            https://github.com/chapeltech/krb5_admin
@@ -8,7 +8,7 @@ Source0:        krb5_admin-%{version}.tar.gz
 
 BuildRequires:  gcc
 BuildRequires:  e2fsprogs-devel
-BuildRequires:  heimdal-devel
+BuildRequires:  asgard-heimdal-devel
 BuildRequires:  libkharon-perl >= 0.8
 BuildRequires:  make
 BuildRequires:  perl
@@ -21,8 +21,8 @@ BuildRequires:  sqlite
 BuildRequires:  systemd-rpm-macros
 BuildRequires:  swig
 
-Requires:       heimdal-libs
-Requires:       heimdal-workstation
+Requires:       asgard-heimdal-clients
+Requires:       asgard-heimdal-libs
 Requires:       knc
 Requires:       libkharon-perl >= 0.8
 Requires:       perl-DBD-SQLite
@@ -67,7 +67,7 @@ Kerberos credentials.
 %package kdc
 Summary:        KDC helper for libkrb5admin-perl
 Requires:       %{name} = %{version}-%{release}
-Requires:       heimdal-server
+Requires:       asgard-heimdal-kdc
 Requires:       postfix
 Requires:       prefork
 Requires(pre):  shadow-utils
@@ -79,12 +79,12 @@ The libkrb5admin-perl-kdc package contains KDC-side helper tooling.
 %autosetup -n krb5_admin-%{version}
 
 %build
-KRB5TYPE=heimdal KRB5DIR=/usr/lib/heimdal \
-KRB5INCDIR=/usr/include/heimdal KRB5LIBDIR=%{_libdir}/heimdal/lib \
+KRB5TYPE=heimdal KRB5DIR=/usr/lib/asgard \
+KRB5INCDIR=/usr/include/asgard/heimdal KRB5LIBDIR=%{_libdir}/asgard/lib \
     perl Makefile.PL INSTALLDIRS=vendor PREFIX=%{_prefix}
 (cd Krb5Admin && \
-    KRB5TYPE=heimdal KRB5DIR=/usr/lib/heimdal \
-    KRB5INCDIR=/usr/include/heimdal KRB5LIBDIR=%{_libdir}/heimdal/lib \
+    KRB5TYPE=heimdal KRB5DIR=/usr/lib/asgard \
+    KRB5INCDIR=/usr/include/asgard/heimdal KRB5LIBDIR=%{_libdir}/asgard/lib \
     perl Makefile.PL INSTALLDIRS=vendor PREFIX=%{_prefix})
 make -j1 V=1 VERBOSE=1
 
@@ -185,6 +185,9 @@ fi
 %license debian/copyright
 
 %changelog
+* Thu Aug 06 2026 ChapelTech <packages@chapel.tech> - 0.4.3-9
+- Build against the private Asgard Heimdal runtime with kx509 support.
+
 * Thu Aug 06 2026 ChapelTech <packages@chapel.tech> - 0.4.3-8
 - Split the host daemon, prestash utility, and refresh policy into role packages.
 

@@ -1,0 +1,195 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+trap 'status=$?; echo "$0: line $LINENO: $BASH_COMMAND" >&2; exit $status' ERR
+
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+
+if test "$#" -ne 1; then
+    echo "usage: $0 OUTPUT_DIRECTORY" >&2
+    exit 2
+fi
+
+test "$TARGET_ARCHITECTURE" = x86_64
+test "$(uname -m)" = "$TARGET_ARCHITECTURE"
+
+output_dir=$1
+source_env=$PACKAGING_DIR/packaging/heimdal/source.env
+spec=$PACKAGING_DIR/packaging/heimdal/rpm/asgard-heimdal.spec
+test -f "$source_env"
+test -f "$spec"
+
+# shellcheck disable=SC1090
+source "$source_env"
+: "${HEIMDAL_GIT_URL:?HEIMDAL_GIT_URL must be set in source.env}"
+: "${HEIMDAL_GIT_COMMIT:?HEIMDAL_GIT_COMMIT must be set in source.env}"
+: "${HEIMDAL_VERSION:?HEIMDAL_VERSION must be set in source.env}"
+: "${HEIMDAL_SNAPSHOT:?HEIMDAL_SNAPSHOT must be set in source.env}"
+case "$HEIMDAL_GIT_COMMIT" in
+    *[!0-9a-f]*|'')
+        echo "HEIMDAL_GIT_COMMIT must be a lowercase hexadecimal commit" >&2
+        exit 1
+        ;;
+esac
+test "${#HEIMDAL_GIT_COMMIT}" -eq 40
+
+dnf install -y dnf-plugins-core epel-release
+dnf config-manager --set-enabled crb
+dnf install -y ca-certificates cpio git gzip rpm-build
+dnf builddep -y "$spec"
+
+mkdir -p "$output_dir"
+output_dir=$(cd "$output_dir" && pwd)
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+source_dir=$work_dir/heimdal
+top_dir=$work_dir/rpm
+extract_dir=$work_dir/extracted
+mkdir -p "$top_dir/BUILD" "$top_dir/BUILDROOT" "$top_dir/RPMS" \
+    "$top_dir/SOURCES" "$top_dir/SPECS" "$top_dir/SRPMS" "$extract_dir"
+
+git clone --depth=1 --filter=blob:none --no-checkout \
+    "$HEIMDAL_GIT_URL" "$source_dir"
+git -C "$source_dir" fetch --depth=1 origin "$HEIMDAL_GIT_COMMIT"
+git -C "$source_dir" checkout --detach "$HEIMDAL_GIT_COMMIT"
+test "$(git -C "$source_dir" rev-parse HEAD)" = "$HEIMDAL_GIT_COMMIT"
+
+source_date_epoch=$(git -C "$source_dir" show -s --format=%ct HEAD)
+export SOURCE_DATE_EPOCH=$source_date_epoch
+archive=asgard-heimdal-$HEIMDAL_VERSION-$HEIMDAL_SNAPSHOT.tar.gz
+git -C "$source_dir" archive --format=tar \
+    --prefix="asgard-heimdal-$HEIMDAL_VERSION-$HEIMDAL_SNAPSHOT/" \
+    "$HEIMDAL_GIT_COMMIT" | gzip -n > "$top_dir/SOURCES/$archive"
+
+test "$(rpmspec -q --srpm --qf '%{NAME}' "$spec")" = asgard-heimdal
+test "$(rpmspec -q --srpm --qf '%{VERSION}' "$spec")" = "$HEIMDAL_VERSION"
+test "$(rpmspec -P "$spec" | sed -n 's/^Source0:[[:space:]]*//p')" = "$archive"
+
+rpmbuild -ba \
+    --define "_topdir $top_dir" \
+    "$spec"
+
+shopt -s nullglob
+binary_rpms=("$top_dir"/RPMS/*/*.rpm)
+source_rpms=("$top_dir"/SRPMS/*.src.rpm)
+test "${#binary_rpms[@]}" -eq 4
+test "${#source_rpms[@]}" -eq 1
+test "$(rpm -qp --qf '%{NAME}' "${source_rpms[0]}")" = asgard-heimdal
+
+expected_names=(
+    asgard-heimdal-clients
+    asgard-heimdal-devel
+    asgard-heimdal-kdc
+    asgard-heimdal-libs
+)
+actual_names=()
+for package in "${binary_rpms[@]}"; do
+    test "$(rpm -qp --qf '%{ARCH}' "$package")" = "$TARGET_ARCHITECTURE"
+    actual_names+=("$(rpm -qp --qf '%{NAME}' "$package")")
+done
+mapfile -t actual_names < <(printf '%s\n' "${actual_names[@]}" | sort)
+test "$(printf '%s\n' "${expected_names[@]}")" = \
+    "$(printf '%s\n' "${actual_names[@]}")"
+
+package_by_name() {
+    local wanted=$1
+    local package
+    for package in "${binary_rpms[@]}"; do
+        if test "$(rpm -qp --qf '%{NAME}' "$package")" = "$wanted"; then
+            printf '%s\n' "$package"
+            return 0
+        fi
+    done
+    return 1
+}
+
+libs_rpm=$(package_by_name asgard-heimdal-libs)
+clients_rpm=$(package_by_name asgard-heimdal-clients)
+kdc_rpm=$(package_by_name asgard-heimdal-kdc)
+devel_rpm=$(package_by_name asgard-heimdal-devel)
+
+rpm -qpl "$libs_rpm" | grep -Eq '^/usr/lib64/asgard/lib/[^/]+[.]so[.]'
+rpm -qpl "$clients_rpm" | grep -qx /usr/bin/kx509
+rpm -qpl "$clients_rpm" | grep -qx /usr/lib/asgard/bin/heimtools
+rpm -qpl "$kdc_rpm" | grep -qx /usr/lib/asgard/libexec/kdc
+rpm -qpl "$devel_rpm" | grep -Eq '^/usr/include/asgard/heimdal/.+[.]h$'
+rpm -qpl "$devel_rpm" | grep -Eq '^/usr/lib64/asgard/lib/[^/]+[.]so$'
+
+for package in "${binary_rpms[@]}"; do
+    rpm -qpl "$package"
+done | sort -u > "$work_dir/installed-paths"
+
+while IFS= read -r path; do
+    case "$path" in
+        /usr/bin/kx509|\
+        /usr/include/asgard|/usr/include/asgard/heimdal|/usr/include/asgard/heimdal/*|\
+        /usr/lib/asgard|/usr/lib/asgard/*|\
+        /usr/lib64/asgard|/usr/lib64/asgard/lib|/usr/lib64/asgard/lib/*|\
+        /usr/share/asgard|/usr/share/asgard/heimdal|/usr/share/asgard/heimdal/*|\
+        /usr/share/licenses/asgard-heimdal-*) ;;
+        *)
+            echo "RPM payload contains unexpected path: $path" >&2
+            exit 1
+            ;;
+    esac
+done < "$work_dir/installed-paths"
+
+if grep -Ev '^/usr/bin/kx509$' "$work_dir/installed-paths" | \
+   grep -Eq '^/usr/(bin|sbin|libexec)(/|$)'; then
+    echo "RPM payload exposes a public Heimdal command other than kx509" >&2
+    grep -Ev '^/usr/bin/kx509$' "$work_dir/installed-paths" | \
+        grep -E '^/usr/(bin|sbin|libexec)(/|$)' >&2
+    exit 1
+fi
+
+for package in "${binary_rpms[@]}"; do
+    (cd "$extract_dir" && rpm2cpio "$package" | cpio -idm --quiet)
+done
+test "$(readlink "$extract_dir/usr/bin/kx509")" = \
+    ../lib/asgard/bin/heimtools
+test -x "$extract_dir/usr/lib/asgard/bin/heimtools"
+
+find "$extract_dir/usr/lib64/asgard/lib" -type f -name '*.so.*' \
+    -print | sort | while IFS= read -r library; do
+        readelf -d "$library" 2>/dev/null | \
+            sed -n 's/.*(SONAME).*\[\(.*\)\].*/\1/p'
+    done > "$work_dir/private-sonames"
+
+find "$extract_dir/usr/lib/asgard" "$extract_dir/usr/lib64/asgard/lib" \
+    -type f -print | sort | while IFS= read -r object; do
+        dynamic=$(mktemp "$work_dir/dynamic.XXXXXX")
+        if ! readelf -d "$object" >"$dynamic" 2>/dev/null; then
+            rm -f "$dynamic"
+            continue
+        fi
+        needs_private=false
+        while IFS= read -r soname; do
+            if grep -Fq "Shared library: [$soname]" "$dynamic"; then
+                needs_private=true
+                break
+            fi
+        done < "$work_dir/private-sonames"
+        if test "$needs_private" = true; then
+            if grep -q '(RPATH)' "$dynamic" || \
+               ! grep -Eq '\(RUNPATH\).*\[/usr/lib64/asgard/lib(:[^]]*)?\]' \
+                   "$dynamic"; then
+                echo "$object does not use the private library RUNPATH" >&2
+                cat "$dynamic" >&2
+                rm -f "$dynamic"
+                exit 1
+            fi
+        fi
+        rm -f "$dynamic"
+    done
+
+dnf install -y "${binary_rpms[@]}"
+test "$(command -v kx509)" = /usr/bin/kx509
+test "$(readlink /usr/bin/kx509)" = ../lib/asgard/bin/heimtools
+/usr/bin/kx509 --version >/dev/null
+
+for package in "${binary_rpms[@]}" "${source_rpms[@]}"; do
+    cp "$package" "$output_dir/"
+done

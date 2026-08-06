@@ -1,0 +1,173 @@
+#!/bin/sh
+
+set -eu
+
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+
+if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+	echo "usage: $0 OUTPUT_DIRECTORY" >&2
+	exit 2
+fi
+
+output_dir=$1
+source_environment=$PACKAGING_DIR/packaging/heimdal/source.env
+test -f "$source_environment"
+. "$source_environment"
+
+: "${HEIMDAL_GIT_URL:?HEIMDAL_GIT_URL must be set in source.env}"
+: "${HEIMDAL_GIT_COMMIT:?HEIMDAL_GIT_COMMIT must be set in source.env}"
+: "${HEIMDAL_VERSION:?HEIMDAL_VERSION must be set in source.env}"
+: "${HEIMDAL_SNAPSHOT:?HEIMDAL_SNAPSHOT must be set in source.env}"
+
+host_architecture=$(dpkg --print-architecture)
+if [ "$TARGET_ARCHITECTURE" != "$host_architecture" ]; then
+	echo "target architecture $TARGET_ARCHITECTURE does not match host architecture $host_architecture" >&2
+	exit 1
+fi
+
+apt-get update -qq
+apt-get install -y --no-install-recommends \
+	autoconf automake binutils bison build-essential ca-certificates \
+	comerr-dev debhelper dh-autoreconf dpkg-dev flex git libcap-ng-dev \
+	libcrypt-dev libdb-dev libedit-dev libjson-perl libsqlite3-dev \
+	libssl-dev libtool pkgconf python3
+
+multiarch=$(dpkg-architecture -qDEB_HOST_MULTIARCH)
+private_libdir=/usr/lib/$multiarch/asgard/lib
+expected_version=$HEIMDAL_VERSION+$HEIMDAL_SNAPSHOT
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+source_dir=$work_dir/source
+mkdir -p "$source_dir"
+
+git -C "$source_dir" init -q
+git -C "$source_dir" remote add origin "$HEIMDAL_GIT_URL"
+git -C "$source_dir" fetch --depth=1 origin "$HEIMDAL_GIT_COMMIT"
+git -C "$source_dir" checkout -q --detach FETCH_HEAD
+actual_commit=$(git -C "$source_dir" rev-parse HEAD)
+if [ "$actual_commit" != "$HEIMDAL_GIT_COMMIT" ]; then
+	echo "fetched Heimdal commit $actual_commit, expected $HEIMDAL_GIT_COMMIT" >&2
+	exit 1
+fi
+
+cp -a "$PACKAGING_DIR/packaging/heimdal/debian" "$source_dir/debian"
+packaging_version=$(dpkg-parsechangelog \
+	-l"$source_dir/debian/changelog" -SVersion)
+if [ "$packaging_version" != "$expected_version" ]; then
+	echo "Debian version $packaging_version does not match pinned version $expected_version" >&2
+	exit 1
+fi
+
+(
+	cd "$source_dir"
+	DEB_BUILD_OPTIONS="nocheck parallel=$(nproc)" \
+		dpkg-buildpackage --build=binary --no-sign
+)
+
+expected_names=$work_dir/expected-names
+actual_names=$work_dir/actual-names
+printf '%s\n' \
+	asgard-heimdal-clients \
+	asgard-heimdal-devel \
+	asgard-heimdal-kdc \
+	asgard-heimdal-libs >"$expected_names"
+: >"$actual_names"
+
+set -- "$work_dir"/*.deb
+test "$#" -eq 4
+for package do
+	test -f "$package"
+	package_name=$(dpkg-deb -f "$package" Package)
+	package_architecture=$(dpkg-deb -f "$package" Architecture)
+	package_version=$(dpkg-deb -f "$package" Version)
+	printf '%s\n' "$package_name" >>"$actual_names"
+	if [ "$package_architecture" != "$TARGET_ARCHITECTURE" ]; then
+		echo "$package has unexpected architecture $package_architecture" >&2
+		exit 1
+	fi
+	if [ "$package_version" != "$expected_version" ]; then
+		echo "$package has unexpected version $package_version" >&2
+		exit 1
+	fi
+done
+LC_ALL=C sort -o "$actual_names" "$actual_names"
+if ! cmp -s "$expected_names" "$actual_names"; then
+	echo "unexpected Debian package set:" >&2
+	diff -u "$expected_names" "$actual_names" >&2 || true
+	exit 1
+fi
+
+select_package() {
+	package_name=$1
+	selected=
+	for candidate in "$work_dir"/*.deb; do
+		if [ "$(dpkg-deb -f "$candidate" Package)" = "$package_name" ]; then
+			test -z "$selected"
+			selected=$candidate
+		fi
+	done
+	test -n "$selected"
+	printf '%s\n' "$selected"
+}
+
+libs_package=$(select_package asgard-heimdal-libs)
+clients_package=$(select_package asgard-heimdal-clients)
+kdc_package=$(select_package asgard-heimdal-kdc)
+devel_package=$(select_package asgard-heimdal-devel)
+
+payload_root=$work_dir/payload
+mkdir -p "$payload_root"
+for package in \
+	"$libs_package" "$clients_package" "$kdc_package" "$devel_package"; do
+	dpkg-deb -x "$package" "$payload_root"
+done
+
+test -d "$payload_root$private_libdir"
+test -x "$payload_root/usr/lib/asgard/bin/heimtools"
+test -x "$payload_root/usr/lib/asgard/libexec/kdc"
+test -f "$payload_root/usr/include/asgard/heimdal/krb5.h"
+test -d "$payload_root/usr/share/asgard/heimdal/man"
+test -L "$payload_root/usr/bin/kx509"
+test -x "$payload_root/usr/bin/kx509"
+
+find "$payload_root$private_libdir" -type f -name '*.so.*' \
+	-print | grep . >/dev/null
+
+for public_dir in "$payload_root/usr/bin" "$payload_root/usr/sbin"; do
+	test -d "$public_dir" || continue
+	find "$public_dir" -mindepth 1 -maxdepth 1 -print | while IFS= read -r path; do
+		if [ "$path" != "$payload_root/usr/bin/kx509" ]; then
+			echo "unexpected public Heimdal command ${path#"$payload_root"}" >&2
+			exit 1
+		fi
+	done
+done
+
+if [ -d "$payload_root/etc" ] && \
+	find "$payload_root/etc" -mindepth 1 -print | grep . >/dev/null; then
+	echo "Heimdal packages contain files below /etc" >&2
+	exit 1
+fi
+
+runpath_marker=$work_dir/runpath-checked
+find \
+	"$payload_root$private_libdir" \
+	"$payload_root/usr/lib/asgard" \
+	-type f -print | while IFS= read -r file; do
+	if readelf -d "$file" 2>/dev/null | grep -q '(NEEDED)'; then
+		if ! readelf -d "$file" 2>/dev/null | \
+			grep '(RUNPATH)' | grep -F "$private_libdir" >/dev/null; then
+			echo "${file#"$payload_root"} lacks private RUNPATH $private_libdir" >&2
+			exit 1
+		fi
+		: >"$runpath_marker"
+	fi
+done
+test -f "$runpath_marker"
+
+mkdir -p "$output_dir"
+for package in "$work_dir"/*.deb; do
+	cp "$package" "$output_dir/"
+done

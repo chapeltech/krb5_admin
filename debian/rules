@@ -4,9 +4,9 @@ include /usr/share/dpkg/architecture.mk
 
 PERL_VENDOR_ARCH := $(shell perl -MConfig -le 'print $$Config{installvendorarch};')
 PERL_VENDOR_LIB := $(shell perl -MConfig -le 'print $$Config{installvendorlib};')
-KRB5_ENV := KRB5TYPE=heimdal KRB5DIR=/usr \
-	KRB5INCDIR=/usr/include/heimdal \
-	KRB5LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/heimdal
+KRB5_ENV := KRB5TYPE=heimdal KRB5DIR=/usr/lib/asgard \
+	KRB5INCDIR=/usr/include/asgard/heimdal \
+	KRB5LIBDIR=/usr/lib/$(DEB_HOST_MULTIARCH)/asgard/lib
 
 ifneq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
 PERL_VENDOR_ARCH := $(subst $(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH),$(PERL_VENDOR_ARCH))

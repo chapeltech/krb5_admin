@@ -1,0 +1,5 @@
+asgard-heimdal (7.99.1+20260804.fa92377c) trixie; urgency=medium
+
+  * Package the pinned Heimdal snapshot in a private Asgard namespace.
+
+ -- ChapelTech <packages@chapel.tech>  Thu, 06 Aug 2026 16:30:00 +0100

@@ -1,3 +1,9 @@
+libkrb5admin-perl (0.4.3-3) unstable; urgency=medium
+
+  * Build against the private Asgard Heimdal runtime with kx509 support.
+
+ -- ChapelTech <packages@chapel.tech>  Thu, 06 Aug 2026 16:30:00 +0100
+
 libkrb5admin-perl (0.4.3-2) unstable; urgency=medium
 
   * Split the host daemon and prestash refresh policy into role packages.

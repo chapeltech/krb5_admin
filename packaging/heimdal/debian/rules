@@ -1,0 +1,58 @@
+#!/usr/bin/make -f
+
+include /usr/share/dpkg/architecture.mk
+
+PRIVATE_LIBDIR := /usr/lib/$(DEB_HOST_MULTIARCH)/asgard/lib
+
+export DEB_BUILD_MAINT_OPTIONS := hardening=+all
+export DEB_LDFLAGS_MAINT_APPEND := -Wl,--enable-new-dtags -Wl,-rpath,$(PRIVATE_LIBDIR)
+
+%:
+	dh $@ --builddirectory=build
+
+override_dh_auto_configure:
+	dh_auto_configure --builddirectory=build -- \
+		--disable-dependency-tracking \
+		--disable-heimdal-documentation \
+		--disable-silent-rules \
+		--disable-static \
+		--enable-kcm \
+		--enable-kx509 \
+		--enable-shared \
+		--with-capng \
+		--with-hdbdir=/var/lib/asgard/heimdal \
+		--with-libedit=/usr \
+		--without-microhttpd \
+		--without-openldap \
+		--with-sqlite3=/usr \
+		--prefix=/usr \
+		--bindir=/usr/lib/asgard/bin \
+		--sbindir=/usr/lib/asgard/sbin \
+		--libexecdir=/usr/lib/asgard/libexec \
+		--libdir=$(PRIVATE_LIBDIR) \
+		--includedir=/usr/include/asgard/heimdal \
+		--datarootdir=/usr/share/asgard/heimdal \
+		--mandir=/usr/share/asgard/heimdal/man \
+		--infodir=/usr/share/asgard/heimdal/info \
+		--sysconfdir=/etc \
+		--localstatedir=/var/lib/asgard/heimdal
+
+override_dh_auto_test:
+	dh_auto_test --builddirectory=build -- -j1
+
+override_dh_auto_install:
+	dh_auto_install --builddirectory=build --destdir=debian/tmp
+	rm -f debian/tmp/usr/lib/asgard/bin/kadmin \
+		debian/tmp/usr/lib/asgard/bin/ktutil \
+		debian/tmp/usr/share/asgard/heimdal/man/man1/kadmin.1 \
+		debian/tmp/usr/share/asgard/heimdal/man/man1/ktutil.1
+	find debian/tmp/usr/lib/asgard \
+		debian/tmp/usr/lib/$(DEB_HOST_MULTIARCH)/asgard/lib \
+		\( -name 'test_*' -o -name 'kdc_test_plugin*' \) -delete
+	find debian/tmp -type f \( -name '*.a' -o -name '*.la' \) -delete
+
+override_dh_shlibdeps:
+	dh_shlibdeps -l$(CURDIR)/debian/asgard-heimdal-libs$(PRIVATE_LIBDIR)
+
+override_dh_strip:
+	dh_strip --no-automatic-dbgsym

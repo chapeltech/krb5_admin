@@ -1,0 +1,71 @@
+Source: asgard-heimdal
+Section: net
+Priority: optional
+Maintainer: ChapelTech <packages@chapel.tech>
+Build-Depends:
+ autoconf,
+ automake,
+ bison,
+ comerr-dev,
+ debhelper-compat (= 13),
+ flex,
+ libcap-ng-dev [linux-any],
+ libcrypt-dev,
+ libdb-dev,
+ libedit-dev,
+ libjson-perl,
+ libsqlite3-dev,
+ libssl-dev,
+ libtool,
+ pkgconf,
+ python3,
+Standards-Version: 4.7.0
+Homepage: https://heimdal.software/heimdal/
+Rules-Requires-Root: no
+
+Package: asgard-heimdal-libs
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: private Heimdal runtime libraries for Asgard
+ This package contains the Heimdal Kerberos runtime libraries used by
+ Asgard.  They are installed in a private multiarch directory so they can
+ coexist with the system Kerberos implementation.
+
+Package: asgard-heimdal-clients
+Architecture: any
+Depends:
+ asgard-heimdal-libs (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: private Heimdal client tools for Asgard
+ This package contains Heimdal Kerberos client and utility programs in the
+ private Asgard program directory.  Only the kx509 client is exposed on the
+ system command path.
+
+Package: asgard-heimdal-kdc
+Architecture: any
+Depends:
+ asgard-heimdal-libs (= ${binary:Version}),
+ ${misc:Depends},
+ ${shlibs:Depends},
+Description: private Heimdal KDC programs for Asgard
+ This package contains the Heimdal KDC, administration daemons, and helper
+ programs in the private Asgard program directories.
+
+Package: asgard-heimdal-devel
+Section: libdevel
+Architecture: any
+Depends:
+ asgard-heimdal-libs (= ${binary:Version}),
+ comerr-dev,
+ libcrypt-dev,
+ libdb-dev,
+ libedit-dev,
+ libsqlite3-dev,
+ libssl-dev,
+ ${misc:Depends},
+Description: private Heimdal development files for Asgard
+ This package contains headers, linker names, and pkg-config metadata for
+ building against the private Asgard Heimdal.

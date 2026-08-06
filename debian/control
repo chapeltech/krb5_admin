@@ -1,14 +1,14 @@
 Source: libkrb5admin-perl
 Section: perl
 Priority: optional
-Build-Depends: debhelper (>= 7), dh-autoreconf, perl, swig, sqlite3, libdbi-perl, libdbd-sqlite3-perl, heimdal-dev, libkharon-perl (>= 0.8)
+Build-Depends: debhelper (>= 7), dh-autoreconf, perl, swig, sqlite3, libdbi-perl, libdbd-sqlite3-perl, asgard-heimdal-devel, libkharon-perl (>= 0.8)
 Maintainer: elric <elric@imrryr.org>
 Standards-Version: 3.8.3
 Homepage: http://oskt.secure-endpoints.com/krb5_admin
 
 Package: libkrb5admin-perl
 Architecture: any
-Depends: ${perl:Depends}, ${shlibs:Depends}, ${misc:Depends}, heimdal-clients, libdbi-perl, libdbd-sqlite3-perl, knc, libkharon-perl (>= 0.8)
+Depends: ${perl:Depends}, ${shlibs:Depends}, ${misc:Depends}, asgard-heimdal-clients, libdbi-perl, libdbd-sqlite3-perl, knc, libkharon-perl (>= 0.8)
 Description: Kerberos administration framework
  Kerberos administration framework
 
@@ -38,7 +38,7 @@ Description: scheduled Kerberos credential prestash refresh
 
 Package: libkrb5admin-perl-kdc
 Architecture: any
-Depends: ${misc:Depends}, libkrb5admin-perl (= ${binary:Version}), adduser, heimdal-kdc, postfix, prefork
+Depends: ${misc:Depends}, libkrb5admin-perl (= ${binary:Version}), adduser, asgard-heimdal-kdc, postfix, prefork
 Breaks: libkrb5admin-perl (<< 0.4.3-2~)
 Replaces: libkrb5admin-perl (<< 0.4.3-2~)
 Description: Kerberos administration framework code for only the kdc

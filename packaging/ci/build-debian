@@ -30,15 +30,22 @@ test "$TARGET_ARCHITECTURE" = "$host_architecture"
 apt-get update -qq
 apt-get install -y --no-install-recommends \
   build-essential ca-certificates debhelper dh-autoreconf dpkg-dev file gh git \
-  heimdal-dev libdbd-sqlite3-perl libdbi-perl \
+  libdbd-sqlite3-perl libdbi-perl \
   perl sqlite3 swig
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 dependency_dir=$work_dir/dependencies
+heimdal_dir=$work_dir/heimdal
 build_dir=$work_dir/debian
 source_dir=$build_dir/source
-mkdir -p "$dependency_dir" "$source_dir"
+mkdir -p "$dependency_dir" "$heimdal_dir" "$source_dir"
+
+"$PACKAGING_DIR/packaging/ci/build-heimdal-debian" "$heimdal_dir"
+apt-get install -y --no-install-recommends \
+  "$heimdal_dir"/asgard-heimdal-libs_*_"$TARGET_ARCHITECTURE".deb \
+  "$heimdal_dir"/asgard-heimdal-clients_*_"$TARGET_ARCHITECTURE".deb \
+  "$heimdal_dir"/asgard-heimdal-devel_*_"$TARGET_ARCHITECTURE".deb
 
 download_deb() {
   repository=$1
@@ -124,6 +131,8 @@ kdc_package=$1
 client_version=$(dpkg-deb -f "$client_package" Version)
 dpkg-deb -f "$client_package" Depends | grep -Eq \
   '(^|, )knc([[:space:](,]|$)'
+dpkg-deb -f "$client_package" Depends | grep -Eq \
+  '(^|, )asgard-heimdal-clients([[:space:](,]|$)'
 dpkg-deb -f "$hostd_package" Depends | grep -F \
   "libkrb5admin-perl (= $client_version)" >/dev/null
 dpkg-deb -f "$hostd_package" Depends | grep -F \
@@ -153,13 +162,22 @@ command -v krb5_admin
 command -v krb5_host
 command -v krb5_hostd
 command -v krb5_prestash
+test "$(command -v kx509)" = /usr/bin/kx509
+extension=$(dpkg -L libkrb5admin-perl | grep '/Krb5Admin/C/C[.]so$')
+private_libdir=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/asgard/lib
+extension_dependencies=$(ldd "$extension")
+printf '%s\n' "$extension_dependencies"
+printf '%s\n' "$extension_dependencies" | \
+  grep -F "$private_libdir/libkrb5.so"
+printf '%s\n' "$extension_dependencies" | \
+  grep -F "$private_libdir/libkadm5srv.so"
 test "$(dpkg-query --search /usr/sbin/krb5_hostd | cut -d: -f1)" = \
   krb5-hostd
 test "$(dpkg-query --search /usr/bin/krb5_prestash | cut -d: -f1)" = \
   krb5-prestash
 
 mkdir -p "$ARTIFACT_DIR"
-for package in "$build_dir"/*.deb; do
+for package in "$heimdal_dir"/*.deb "$build_dir"/*.deb; do
   test -f "$package"
   package_architecture=$(dpkg-deb -f "$package" Architecture)
   case "$package_architecture" in

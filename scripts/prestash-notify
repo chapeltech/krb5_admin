@@ -11,7 +11,11 @@ use Data::Dumper;
 my $uname = getpwuid($<);
 my $fqdn = hostname();
 
-my ($KINIT) = grep { -x } qw(/usr/bin/kinit /opt/heimdal/bin/kinit);
+my ($KINIT) = grep { -x } qw(
+	/usr/lib/asgard/bin/kinit
+	/usr/bin/kinit
+	/opt/heimdal/bin/kinit
+);
 my $KTAB ="/var/spool/keytabs/$uname";
 my $PRINC="$uname/$fqdn";
 

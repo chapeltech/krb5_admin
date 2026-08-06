@@ -29,7 +29,7 @@ test "$(uname -m)" = "$TARGET_ARCHITECTURE"
 dnf install -y dnf-plugins-core epel-release
 dnf config-manager --set-enabled crb
 dnf install -y \
-  ca-certificates e2fsprogs-devel file gcc gh git gzip heimdal-devel make perl \
+  ca-certificates e2fsprogs-devel file gcc gh git gzip make perl \
   perl-DBD-SQLite perl-DBI \
   perl-ExtUtils-MakeMaker perl-devel perl-generators \
   redhat-rpm-config rpm-build sqlite swig systemd systemd-rpm-macros
@@ -37,9 +37,16 @@ dnf install -y \
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
 dependency_dir=$work_dir/dependencies
+heimdal_dir=$work_dir/heimdal
 top_dir=$work_dir/rpm
-mkdir -p "$dependency_dir" \
+mkdir -p "$dependency_dir" "$heimdal_dir" \
   "$top_dir/SOURCES" "$top_dir/RPMS" "$top_dir/SRPMS"
+
+"$PACKAGING_DIR/packaging/ci/build-heimdal-rpm" "$heimdal_dir"
+dnf install -y \
+  "$heimdal_dir"/asgard-heimdal-libs-[0-9]*.el9.x86_64.rpm \
+  "$heimdal_dir"/asgard-heimdal-clients-[0-9]*.el9.x86_64.rpm \
+  "$heimdal_dir"/asgard-heimdal-devel-[0-9]*.el9.x86_64.rpm
 
 download_rpm() {
   repository=$1
@@ -109,6 +116,8 @@ kdc_package=$1
 
 client_nvr=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$client_package")
 rpm -qp --requires "$client_package" | grep -qx knc
+rpm -qp --requires "$client_package" | grep -qx asgard-heimdal-clients
+rpm -qp --requires "$client_package" | grep -qx asgard-heimdal-libs
 rpm -qp --requires "$hostd_package" | \
   grep -Fx "libkrb5admin-perl = $client_nvr"
 rpm -qp --requires "$hostd_package" | \
@@ -132,6 +141,14 @@ dnf install -y "$dependency_dir"/*.rpm "$client_package"
 perl -MKrb5Admin::Client -e 1
 command -v krb5_admin
 command -v krb5_host
+test "$(command -v kx509)" = /usr/bin/kx509
+extension=$(rpm -qlp "$client_package" | grep '/Krb5Admin/C/C[.]so$')
+extension_dependencies=$(ldd "$extension")
+printf '%s\n' "$extension_dependencies"
+printf '%s\n' "$extension_dependencies" | \
+  grep -F '/usr/lib64/asgard/lib/libkrb5.so'
+printf '%s\n' "$extension_dependencies" | \
+  grep -F '/usr/lib64/asgard/lib/libkadm5srv.so'
 dnf install -y "$hostd_package" "$prestash_package" "$refresh_package"
 command -v krb5_hostd
 command -v krb5_prestash
@@ -143,7 +160,8 @@ test "$(systemctl is-enabled krb5-hostd.target)" = enabled
 test "$(systemctl is-enabled krb5-prestash-refresh.timer)" = enabled
 
 mkdir -p "$ARTIFACT_DIR"
-for package in "$top_dir"/RPMS/*/*.rpm "$top_dir"/SRPMS/*.src.rpm; do
+for package in "$heimdal_dir"/*.rpm \
+    "$top_dir"/RPMS/*/*.rpm "$top_dir"/SRPMS/*.src.rpm; do
   test -f "$package"
   package_architecture=$(rpm -qp --qf '%{ARCH}' "$package")
   case "$package_architecture" in

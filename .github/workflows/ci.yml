@@ -19,15 +19,27 @@ jobs:
             debian:trixie-slim /bin/sh -euxc '
               apt-get update -qq
               apt-get install -y --no-install-recommends \
-                build-essential heimdal-dev \
+                build-essential ca-certificates git \
                 libdbd-sqlite3-perl libdbi-perl perl swig
               cp -a /src /tmp/krb5_admin
+              mkdir /tmp/heimdal-packages
+              PACKAGING_DIR=/tmp/krb5_admin \
+                TARGET_ARCHITECTURE=$(dpkg --print-architecture) \
+                /tmp/krb5_admin/packaging/ci/build-heimdal-debian \
+                  /tmp/heimdal-packages
+              apt-get install -y --no-install-recommends \
+                /tmp/heimdal-packages/asgard-heimdal-libs_*.deb \
+                /tmp/heimdal-packages/asgard-heimdal-clients_*.deb \
+                /tmp/heimdal-packages/asgard-heimdal-devel_*.deb
               cd /tmp/krb5_admin
-              KRB5TYPE=heimdal KRB5DIR=/usr perl Makefile.PL
+              KRB5TYPE=heimdal KRB5DIR=/usr/lib/asgard \
+                KRB5INCDIR=/usr/include/asgard/heimdal \
+                KRB5LIBDIR=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/asgard/lib \
+                perl Makefile.PL
               cd Krb5Admin
-              KRB5TYPE=heimdal KRB5DIR=/usr \
-                KRB5INCDIR=/usr/include/heimdal \
-                KRB5LIBDIR=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/heimdal \
+              KRB5TYPE=heimdal KRB5DIR=/usr/lib/asgard \
+                KRB5INCDIR=/usr/include/asgard/heimdal \
+                KRB5LIBDIR=/usr/lib/$(dpkg-architecture -qDEB_HOST_MULTIARCH)/asgard/lib \
                 perl Makefile.PL
               cd ..
               make -j1
