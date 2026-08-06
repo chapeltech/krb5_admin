@@ -191,7 +191,6 @@ char	**krb5_list_princs(krb5_context, kadm5_handle, char *);
 char	**krb5_list_pols(krb5_context, kadm5_handle, char *);
 
 void	  init_store_creds(krb5_context, char *, krb5_creds *);
-int	  have_kx509(void);
 void	  kx509(krb5_context, krb5_creds *, char *, char *);
 
 krb5_error_code		 init_kdb(krb5_context, kadm5_handle);

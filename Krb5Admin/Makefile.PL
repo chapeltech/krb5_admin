@@ -51,7 +51,6 @@ for my $header ("$KRB5INCDIR/krb5-protos.h",
 	open(my $fh, '<', $header) or die "cannot read $header: $!\n";
 	local $/;
 	my $prototypes = <$fh>;
-	$HAVE .= ' -DHAVE_KX509' if $prototypes =~ /\bkrb5_kx509_ext\b/;
 	$HAVE .= ' -DHEIMDAL_MUTABLE_STRING_TO_KEY'
 	    if $prototypes =~ /krb5_string_to_key\s*\([^;]*\bkrb5_principal\b/s;
 	close($fh);

@@ -34,7 +34,6 @@
 int		curve25519_donna(uint8_t *, const uint8_t *, const uint8_t *);
 static int	keyblock_num_keys(krb5_keyblock *);
 
-#ifdef HAVE_HEIMDAL
 static krb5_error_code
 compat_krb5_crypto_prfplus(krb5_context ctx, krb5_crypto crypto,
     const krb5_data *input, size_t len, krb5_data *output)
@@ -89,7 +88,6 @@ fail:
 }
 
 #define krb5_crypto_prfplus compat_krb5_crypto_prfplus
-#endif
 
 kadm5_handle
 krb5_get_kadm5_hndl(krb5_context ctx, char *dbname, const char *princstr)
@@ -1464,20 +1462,9 @@ done:
 		croak("%s", croakstr);
 }
 
-int
-have_kx509(void)
-{
-#ifdef HAVE_KX509
-	return 1;
-#else
-	return 0;
-#endif
-}
-
 void
 kx509(krb5_context ctx, krb5_creds *creds, char *realm, char *store)
 {
-#ifdef HAVE_KX509
 	krb5_kx509_req_ctx	 req = NULL;
 	krb5_ccache		 ccache = NULL;
 	krb5_error_code		 ret = 0;
@@ -1504,13 +1491,6 @@ done:
 		krb5_cc_destroy(ctx, ccache);
 	if (ret)
 		croak("%s", croakstr);
-#else
-	(void)ctx;
-	(void)creds;
-	(void)realm;
-	(void)store;
-	croak("kx509 is not implemented by this Kerberos installation");
-#endif
 }
 
 #ifdef HAVE_HEIMDAL
