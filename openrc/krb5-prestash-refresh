@@ -1,0 +1,4 @@
+#!/bin/sh
+
+umask 077
+exec /usr/bin/krb5_prestash fetch

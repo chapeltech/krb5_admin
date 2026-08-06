@@ -1,3 +1,0 @@
-enable krb5-hostd.socket
-enable krb5-hostd-knc.socket
-enable krb5-prestash.timer

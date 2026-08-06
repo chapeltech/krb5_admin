@@ -1,7 +1,7 @@
 # Maintainer: ChapelTech <packages@chapel.tech>
 pkgname=libkrb5admin-perl
 pkgver=0.4.3
-pkgrel=0
+pkgrel=1
 pkgdesc="Perl Kerberos administration library and tools"
 url="https://github.com/ChapelTech/krb5_admin"
 arch="all"
@@ -13,7 +13,6 @@ depends="
 	perl
 	perl-dbd-sqlite
 	perl-dbi
-	prefork
 	"
 makedepends="
 	heimdal-dev
@@ -23,7 +22,10 @@ makedepends="
 subpackages="
 	$pkgname-doc
 	$pkgname-kdc:_kdc:noarch
-	$pkgname-systemd:_systemd:noarch
+	krb5-hostd:_hostd:noarch
+	krb5-hostd-openrc:_hostd_openrc:noarch
+	krb5-prestash:_prestash:noarch
+	krb5-prestash-refresh:_prestash_refresh:noarch
 	"
 source="
 	krb5_admin-$pkgver.tar.gz
@@ -77,21 +79,23 @@ package() {
 	install -Dm644 debian/copyright \
 		"$pkgdir/usr/share/licenses/$pkgname/copyright"
 
-	install -d \
-		"$pkgdir/usr/lib/systemd/system" \
-		"$pkgdir/usr/lib/systemd/system-preset"
-	install -m644 systemd/*.service systemd/*.socket systemd/*.timer \
-		"$pkgdir/usr/lib/systemd/system/"
-	install -m644 systemd/80-krb5-admin.preset \
-		"$pkgdir/usr/lib/systemd/system-preset/"
+	install -Dm755 openrc/krb5-hostd \
+		"$pkgdir/etc/init.d/krb5-hostd"
+	install -Dm755 openrc/krb5-hostd-local \
+		"$pkgdir/etc/init.d/krb5-hostd-local"
+	install -Dm644 openrc/krb5-hostd.inetd \
+		"$pkgdir/etc/krb5/krb5-hostd.inetd"
+	install -Dm755 openrc/krb5-prestash-refresh \
+		"$pkgdir/etc/periodic/daily/krb5-prestash-refresh"
 }
 
 _kdc() {
 	pkgdesc="KDC helper for libkrb5admin-perl"
-	depends="$pkgname=$pkgver-r$pkgrel heimdal postfix"
+	depends="libkrb5admin-perl=$pkgver-r$pkgrel heimdal postfix prefork"
 
 	install -d "$subpkgdir/usr/bin"
 	mv "$pkgdir/usr/bin/krb5_setup_postfix" "$subpkgdir/usr/bin/"
+	mv "$pkgdir/usr/bin/prestash-notify" "$subpkgdir/usr/bin/"
 	sed -i '/^set -eu$/a\
 \
 if ! id krb5notify >/dev/null 2>\&1; then\
@@ -100,11 +104,43 @@ if ! id krb5notify >/dev/null 2>\&1; then\
 fi' "$subpkgdir/usr/bin/krb5_setup_postfix"
 }
 
-_systemd() {
-	pkgdesc="Systemd units for libkrb5admin-perl"
-	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+_hostd() {
+	pkgdesc="Kerberos host administration daemon"
+	depends="
+		busybox-extras
+		knc
+		krb5-prestash-refresh=$pkgver-r$pkgrel
+		libkrb5admin-perl=$pkgver-r$pkgrel
+		lnetd
+		openrc
+		prefork
+		"
 
-	amove usr/lib/systemd
+	amove usr/sbin/krb5_hostd
+}
+
+_hostd_openrc() {
+	pkgdesc="OpenRC services for krb5-hostd"
+	depends="krb5-hostd=$pkgver-r$pkgrel openrc"
+	install_if="krb5-hostd=$pkgver-r$pkgrel openrc"
+
+	amove etc/init.d/krb5-hostd
+	amove etc/init.d/krb5-hostd-local
+	amove etc/krb5/krb5-hostd.inetd
+}
+
+_prestash() {
+	pkgdesc="Prestashed Kerberos credential utility"
+	depends="libkrb5admin-perl=$pkgver-r$pkgrel"
+
+	amove usr/bin/krb5_prestash
+}
+
+_prestash_refresh() {
+	pkgdesc="Scheduled prestashed Kerberos credential refresh"
+	depends="krb5-prestash=$pkgver-r$pkgrel"
+
+	amove etc/periodic/daily/krb5-prestash-refresh
 }
 
 sha512sums="

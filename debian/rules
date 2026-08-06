@@ -42,8 +42,9 @@ override_dh_auto_test:
 
 override_dh_install:
 	dh_install
-	dh_installsystemd -plibkrb5admin-perl \
-	    krb5-hostd.socket krb5-hostd-knc.socket krb5-prestash.timer
+	dh_installsystemd -pkrb5-hostd krb5-hostd.target
+	dh_installsystemd -pkrb5-prestash-refresh \
+	    krb5-prestash-refresh.timer
 
 override_dh_builddeb:
 	dh_builddeb -- -Zgzip

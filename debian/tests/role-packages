@@ -1,0 +1,41 @@
+#!/bin/sh
+
+set -eu
+
+assert_owner() {
+	expected=$1
+	path=$2
+	owner=$(dpkg-query --search "$path" | cut -d: -f1)
+	test "$owner" = "$expected"
+}
+
+assert_exact_dependency() {
+	package=$1
+	dependency=$2
+	version=$(dpkg-query --show --showformat='${Version}' "$dependency")
+	depends=$(dpkg-query --show --showformat='${Depends}' "$package")
+	printf '%s\n' "$depends" | grep -F "$dependency (= $version)" >/dev/null
+}
+
+assert_owner krb5-hostd /usr/sbin/krb5_hostd
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd.target
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd.socket
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd-knc.socket
+assert_owner krb5-prestash /usr/bin/krb5_prestash
+assert_owner krb5-prestash-refresh \
+    /usr/lib/systemd/system/krb5-prestash-refresh.service
+assert_owner krb5-prestash-refresh \
+    /usr/lib/systemd/system/krb5-prestash-refresh.timer
+assert_owner libkrb5admin-perl-kdc /usr/bin/prestash-notify
+
+assert_exact_dependency krb5-hostd libkrb5admin-perl
+assert_exact_dependency krb5-hostd krb5-prestash-refresh
+assert_exact_dependency krb5-prestash libkrb5admin-perl
+assert_exact_dependency krb5-prestash-refresh krb5-prestash
+
+common_files=$(dpkg-query --listfiles libkrb5admin-perl)
+if printf '%s\n' "$common_files" | \
+    grep -Eq '/(krb5_hostd|krb5_prestash|krb5-(hostd|prestash).*\.(service|socket|timer|target))$'; then
+	echo 'libkrb5admin-perl still owns host daemon or prestash role files' >&2
+	exit 1
+fi

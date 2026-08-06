@@ -1,3 +1,9 @@
+libkrb5admin-perl (0.4.3-2) unstable; urgency=medium
+
+  * Split the host daemon and prestash refresh policy into role packages.
+
+ -- ChapelTech <packages@chapel.tech>  Thu, 06 Aug 2026 14:05:00 +0100
+
 libkrb5admin-perl (0.4.3-1) unstable; urgency=medium
 
   * Build against distro Heimdal and publish Trixie amd64 and arm64 packages.

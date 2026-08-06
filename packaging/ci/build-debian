@@ -29,7 +29,7 @@ test "$TARGET_ARCHITECTURE" = "$host_architecture"
 
 apt-get update -qq
 apt-get install -y --no-install-recommends \
-  build-essential debhelper dh-autoreconf dpkg-dev file gh \
+  build-essential ca-certificates debhelper dh-autoreconf dpkg-dev file gh git \
   heimdal-dev libdbd-sqlite3-perl libdbi-perl \
   perl sqlite3 swig
 
@@ -87,7 +87,8 @@ for package in "$dependency_dir"/*.deb; do
   fi
 done
 
-git -C "$PACKAGING_DIR" archive HEAD | tar -x -C "$source_dir"
+git -c safe.directory="$PACKAGING_DIR" -C "$PACKAGING_DIR" \
+  archive HEAD | tar -x -C "$source_dir"
 rm -rf "$source_dir/debian"
 cp -a "$PACKAGING_DIR/debian" "$source_dir/debian"
 
@@ -102,11 +103,60 @@ set -- "$build_dir"/libkrb5admin-perl_*_"$TARGET_ARCHITECTURE".deb
 test "$#" -eq 1
 test -f "$1"
 client_package=$1
+
+set -- "$build_dir"/krb5-hostd_*_all.deb
+test "$#" -eq 1
+test -f "$1"
+hostd_package=$1
+set -- "$build_dir"/krb5-prestash_*_all.deb
+test "$#" -eq 1
+test -f "$1"
+prestash_package=$1
+set -- "$build_dir"/krb5-prestash-refresh_*_all.deb
+test "$#" -eq 1
+test -f "$1"
+refresh_package=$1
+set -- "$build_dir"/libkrb5admin-perl-kdc_*_"$TARGET_ARCHITECTURE".deb
+test "$#" -eq 1
+test -f "$1"
+kdc_package=$1
+
+client_version=$(dpkg-deb -f "$client_package" Version)
+dpkg-deb -f "$client_package" Depends | grep -Eq \
+  '(^|, )knc([[:space:](,]|$)'
+dpkg-deb -f "$hostd_package" Depends | grep -F \
+  "libkrb5admin-perl (= $client_version)" >/dev/null
+dpkg-deb -f "$hostd_package" Depends | grep -F \
+  "krb5-prestash-refresh (= $client_version)" >/dev/null
+dpkg-deb -f "$prestash_package" Depends | grep -F \
+  "libkrb5admin-perl (= $client_version)" >/dev/null
+dpkg-deb -f "$refresh_package" Depends | grep -F \
+  "krb5-prestash (= $client_version)" >/dev/null
+dpkg-deb -f "$kdc_package" Depends | grep -Eq \
+  '(^|, )prefork([[:space:](,]|$)'
+
+if dpkg-deb --contents "$client_package" | grep -Eq \
+    '/(krb5_hostd|krb5_prestash|krb5-(hostd|prestash).*[.](service|socket|timer|target))$'; then
+  echo "$client_package contains role-owned files" >&2
+  exit 1
+fi
+dpkg-deb --contents "$hostd_package" | grep -q '/krb5-hostd.target$'
+dpkg-deb --contents "$refresh_package" | \
+  grep -q '/krb5-prestash-refresh.timer$'
+dpkg-deb --contents "$kdc_package" | grep -q '/prestash-notify$'
+
 apt-get install -y --no-install-recommends \
-  "$dependency_dir"/*.deb "$client_package"
+  "$dependency_dir"/*.deb "$client_package" "$hostd_package" \
+  "$prestash_package" "$refresh_package"
 perl -MKrb5Admin::Client -e 1
 command -v krb5_admin
 command -v krb5_host
+command -v krb5_hostd
+command -v krb5_prestash
+test "$(dpkg-query --search /usr/sbin/krb5_hostd | cut -d: -f1)" = \
+  krb5-hostd
+test "$(dpkg-query --search /usr/bin/krb5_prestash | cut -d: -f1)" = \
+  krb5-prestash
 
 mkdir -p "$ARTIFACT_DIR"
 for package in "$build_dir"/*.deb; do

@@ -1,0 +1,19 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+
+description="Kerberos host daemon local service"
+supervisor="supervise-daemon"
+command="/usr/sbin/lnetd"
+command_args="-d -w -m 0600 /run/krb5_hostd /usr/libexec/prefork /usr/sbin/krb5_hostd -P"
+pidfile="/run/${RC_SVCNAME}.pid"
+respawn_delay=5
+respawn_max=0
+
+depend() {
+	need localmount
+	use logger
+}
+
+stop_post() {
+	rm -f /run/krb5_hostd
+}

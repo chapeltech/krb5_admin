@@ -7,7 +7,7 @@ OnCalendar=*-*-* 02:00:00
 RandomizedDelaySec=4h
 FixedRandomDelay=yes
 Persistent=yes
-Unit=krb5-prestash.service
+Unit=krb5-prestash-refresh.service
 
 [Install]
 WantedBy=timers.target

@@ -1,6 +1,7 @@
 [Unit]
 Description=Kerberos host daemon local socket
 Documentation=man:krb5_hostd(8)
+PartOf=krb5-hostd.target
 
 [Socket]
 ListenStream=/run/krb5_hostd

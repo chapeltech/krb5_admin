@@ -1,0 +1,1 @@
+2666 stream tcp wait root /usr/libexec/prefork prefork /usr/bin/knc -iS /run/krb5_hostd

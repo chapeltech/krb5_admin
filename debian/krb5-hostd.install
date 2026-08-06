@@ -1,0 +1,8 @@
+usr/man/man5/krb5_hostd.conf.5
+usr/man/man8/krb5_hostd.8
+usr/sbin/krb5_hostd
+systemd/krb5-hostd.service usr/lib/systemd/system
+systemd/krb5-hostd.socket usr/lib/systemd/system
+systemd/krb5-hostd-knc.service usr/lib/systemd/system
+systemd/krb5-hostd-knc.socket usr/lib/systemd/system
+systemd/krb5-hostd.target usr/lib/systemd/system

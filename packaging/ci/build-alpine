@@ -8,6 +8,8 @@ KNC_REPOSITORY=ChapelTech/knc
 KNC_RELEASE=v1.12
 KHARON_REPOSITORY=ChapelTech/kharon
 KHARON_RELEASE=v0.8.4
+LNETD_REPOSITORY=ChapelTech/lnetd
+LNETD_RELEASE=v0.2
 PREFORK_REPOSITORY=ChapelTech/prefork
 PREFORK_RELEASE=v0.3
 
@@ -167,6 +169,7 @@ download_apk() {
 download_apk "$KNC_REPOSITORY" "$KNC_RELEASE" knc
 download_apk "$KNC_REPOSITORY" "$KNC_RELEASE" libknc
 download_apk "$KHARON_REPOSITORY" "$KHARON_RELEASE" libkharon-perl
+download_apk "$LNETD_REPOSITORY" "$LNETD_RELEASE" lnetd
 download_apk "$PREFORK_REPOSITORY" "$PREFORK_RELEASE" prefork
 
 apk add "$dependency_dir"/*.apk
@@ -177,6 +180,8 @@ git -c "$source_git" -C "$SOURCE_DIR" archive \
 	"refs/tags/$RELEASE_TAG" | tar -x -C "$staged_source"
 rm -rf "$staged_source/debian" "$staged_source/packaging/alpine"
 cp -a "$PACKAGING_DIR/debian" "$staged_source/debian"
+rm -rf "$staged_source/openrc"
+cp -a "$PACKAGING_DIR/openrc" "$staged_source/openrc"
 mkdir -p "$staged_source/packaging"
 cp -a "$PACKAGING_DIR/packaging/alpine" \
 	"$staged_source/packaging/alpine"
@@ -215,6 +220,58 @@ apk add "$client_package"
 perl -MKrb5Admin::Client -e 1
 command -v krb5_admin
 command -v krb5_host
+
+set -- "$repository_dir"/*/"$TARGET_ARCHITECTURE"/\
+"krb5-hostd-$package_version-r$package_revision.apk"
+test "$#" -eq 1
+test -f "$1"
+hostd_package=$1
+set -- "$repository_dir"/*/"$TARGET_ARCHITECTURE"/\
+"krb5-hostd-openrc-$package_version-r$package_revision.apk"
+test "$#" -eq 1
+test -f "$1"
+hostd_openrc_package=$1
+set -- "$repository_dir"/*/"$TARGET_ARCHITECTURE"/\
+"krb5-prestash-$package_version-r$package_revision.apk"
+test "$#" -eq 1
+test -f "$1"
+prestash_package=$1
+set -- "$repository_dir"/*/"$TARGET_ARCHITECTURE"/\
+"krb5-prestash-refresh-$package_version-r$package_revision.apk"
+test "$#" -eq 1
+test -f "$1"
+refresh_package=$1
+apk verify "$hostd_package" "$hostd_openrc_package" \
+	"$prestash_package" "$refresh_package"
+apk add "$hostd_package" "$hostd_openrc_package" \
+	"$prestash_package" "$refresh_package"
+
+test -x /etc/init.d/krb5-hostd
+test -x /etc/init.d/krb5-hostd-local
+test -f /etc/krb5/krb5-hostd.inetd
+test -x /etc/periodic/daily/krb5-prestash-refresh
+test ! -e /usr/lib/systemd
+test -z "$(find /etc/runlevels -type l -name 'krb5-hostd*' -print)"
+command -v krb5_hostd
+command -v krb5_prestash
+
+mkdir -p /run/openrc
+touch /run/openrc/softlevel
+rc-service --nodeps krb5-hostd-local start
+for _ in 1 2 3 4 5; do
+	test -S /run/krb5_hostd && break
+	sleep 1
+done
+test -S /run/krb5_hostd
+rc-service --nodeps krb5-hostd start
+for _ in 1 2 3 4 5; do
+	netstat -ltn 2>/dev/null | grep -q ':2666 ' && break
+	sleep 1
+done
+netstat -ltn | grep -q ':2666 '
+rc-service --nodeps krb5-hostd stop
+rc-service --nodeps krb5-hostd-local stop
+test ! -S /run/krb5_hostd
 
 package_list=$work_dir/packages.list
 find "$repository_dir" -type f -name '*.apk' -print | sort >"$package_list"

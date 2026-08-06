@@ -1,0 +1,8 @@
+[Unit]
+Description=Kerberos host services
+Documentation=man:krb5_hostd(8) man:krb5_prestash(1)
+Wants=krb5-hostd.socket krb5-hostd-knc.socket
+Wants=krb5-prestash-refresh.timer
+
+[Install]
+WantedBy=multi-user.target

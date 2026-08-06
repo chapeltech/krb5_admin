@@ -29,10 +29,10 @@ test "$(uname -m)" = "$TARGET_ARCHITECTURE"
 dnf install -y dnf-plugins-core epel-release
 dnf config-manager --set-enabled crb
 dnf install -y \
-  e2fsprogs-devel file gcc gh gzip heimdal-devel make perl \
+  ca-certificates e2fsprogs-devel file gcc gh git gzip heimdal-devel make perl \
   perl-DBD-SQLite perl-DBI \
   perl-ExtUtils-MakeMaker perl-devel perl-generators \
-  redhat-rpm-config rpm-build sqlite swig systemd-rpm-macros
+  redhat-rpm-config rpm-build sqlite swig systemd systemd-rpm-macros
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -77,7 +77,8 @@ for package in "$dependency_dir"/*.rpm; do
   fi
 done
 
-git -C "$PACKAGING_DIR" archive --prefix="krb5_admin-$version/" HEAD | \
+git -c safe.directory="$PACKAGING_DIR" -C "$PACKAGING_DIR" \
+  archive --prefix="krb5_admin-$version/" HEAD | \
   gzip -n >"$top_dir/SOURCES/krb5_admin-$version.tar.gz"
 dnf install -y "$dependency_dir"/*.rpm
 rpmbuild -ba \
@@ -88,10 +89,58 @@ set -- "$top_dir"/RPMS/*/libkrb5admin-perl-[0-9]*.x86_64.rpm
 test "$#" -eq 1
 test -f "$1"
 client_package=$1
+
+set -- "$top_dir"/RPMS/*/krb5-hostd-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+hostd_package=$1
+set -- "$top_dir"/RPMS/*/krb5-prestash-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+prestash_package=$1
+set -- "$top_dir"/RPMS/*/krb5-prestash-refresh-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+refresh_package=$1
+set -- "$top_dir"/RPMS/*/libkrb5admin-perl-kdc-[0-9]*.x86_64.rpm
+test "$#" -eq 1
+test -f "$1"
+kdc_package=$1
+
+client_nvr=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$client_package")
+rpm -qp --requires "$client_package" | grep -qx knc
+rpm -qp --requires "$hostd_package" | \
+  grep -Fx "libkrb5admin-perl = $client_nvr"
+rpm -qp --requires "$hostd_package" | \
+  grep -Fx "krb5-prestash-refresh = $client_nvr"
+rpm -qp --requires "$prestash_package" | \
+  grep -Fx "libkrb5admin-perl = $client_nvr"
+rpm -qp --requires "$refresh_package" | \
+  grep -Fx "krb5-prestash = $client_nvr"
+rpm -qp --requires "$kdc_package" | grep -qx prefork
+
+if rpm -qpl "$client_package" | grep -Eq \
+    '/(krb5_hostd|krb5_prestash|krb5-(hostd|prestash).*[.](service|socket|timer|target))$'; then
+  echo "$client_package contains role-owned files" >&2
+  exit 1
+fi
+rpm -qpl "$hostd_package" | grep -q '/krb5-hostd.target$'
+rpm -qpl "$refresh_package" | grep -q '/krb5-prestash-refresh.timer$'
+rpm -qpl "$kdc_package" | grep -q '/prestash-notify$'
+
 dnf install -y "$dependency_dir"/*.rpm "$client_package"
 perl -MKrb5Admin::Client -e 1
 command -v krb5_admin
 command -v krb5_host
+dnf install -y "$hostd_package" "$prestash_package" "$refresh_package"
+command -v krb5_hostd
+command -v krb5_prestash
+test "$(rpm -qf --qf '%{NAME}-%{VERSION}-%{RELEASE}' \
+    /usr/sbin/krb5_hostd)" = krb5-hostd-"$client_nvr"
+test "$(rpm -qf --qf '%{NAME}-%{VERSION}-%{RELEASE}' \
+    /usr/bin/krb5_prestash)" = krb5-prestash-"$client_nvr"
+test "$(systemctl is-enabled krb5-hostd.target)" = enabled
+test "$(systemctl is-enabled krb5-prestash-refresh.timer)" = enabled
 
 mkdir -p "$ARTIFACT_DIR"
 for package in "$top_dir"/RPMS/*/*.rpm "$top_dir"/SRPMS/*.src.rpm; do

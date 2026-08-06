@@ -34,5 +34,5 @@ jobs:
               sed "s/__HOSTNAME__/$(hostname)/g" \
                 t/krb5.conf.in > t/krb5.conf
               PERL5LIB=blib/lib:blib/arch:Krb5Admin/blib/lib:Krb5Admin/blib/arch \
-                prove t/curve25519.t t/getkdc.t t/getrealm.t
+                prove t/curve25519.t t/getkdc.t t/getrealm.t t/systemd.t
             '

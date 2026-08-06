@@ -3,6 +3,7 @@ Description=Kerberos host daemon KNC socket
 Documentation=man:knc(1) man:krb5_hostd(8)
 Requires=krb5-hostd.socket
 After=krb5-hostd.socket
+PartOf=krb5-hostd.target
 
 [Socket]
 ListenStream=2666
