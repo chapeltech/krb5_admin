@@ -3,7 +3,6 @@
 
 use Config;
 use ExtUtils::MakeMaker;
-use DBI ();
 
 use strict;
 use warnings;
@@ -58,10 +57,6 @@ for my $header ("$KRB5INCDIR/krb5-protos.h",
 	close($fh);
 	last;
 }
-
-my $DBIDIR = $INC{'DBI.pm'};
-$DBIDIR =~ s/DBI\.pm$/auto\/DBI/;
-
 # XXXrcd: we still need to deal with this one:
 #  $HAVE	.= ' -DHAVE_CTX_IN_KADM5';
 
@@ -71,7 +66,7 @@ $args{NAME}	= 'Krb5Admin::C';
 $args{OBJECT}	= 'C_wrap.o C.o curve25519-donna.o hkdf.o hmac.o sha1.o ' .
 		  'sha224-256.o sha384-512.o shatest.o usha.o';
 
-$args{INC}	= "-I${KRB5INCDIR} -I${DBIDIR}";
+$args{INC}	= "-I${KRB5INCDIR}";
 
 $args{PM}	= { 'C.pm' => '$(INST_LIB)/Krb5Admin/C.pm' };
 

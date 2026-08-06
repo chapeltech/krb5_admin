@@ -118,55 +118,6 @@ done:
 	return hndl;
 }
 
-kadm5_handle
-krb5_get_kadm5_hndl_ext_sqlite(krb5_context ctx, char *dbname,
-			       const char *princstr, void *sqlite,
-			       int create_schema)
-{
-	kadm5_config_params	 params;
-	kadm5_ret_t		 ret;
-	kadm5_handle		 hndl;
-#ifdef HDB_SQLITE_EXTERNAL_CALLER_TRANSACTION
-	unsigned		 flags;
-#endif
-	char			 croakstr[2048] = "";
-
-	memset((char *) &params, 0, sizeof(params));
-
-	if (dbname) {
-		params.mask   = KADM5_CONFIG_DBNAME;
-		params.dbname = dbname;
-	}
-
-	if (!princstr)
-		princstr = "root";
-
-#ifdef HDB_SQLITE_EXTERNAL_CALLER_TRANSACTION
-	flags = HDB_SQLITE_EXTERNAL_CALLER_TRANSACTION;
-#ifdef HDB_SQLITE_EXTERNAL_CREATE_SCHEMA
-	if (create_schema)
-		flags |= HDB_SQLITE_EXTERNAL_CREATE_SCHEMA;
-#else
-	(void) create_schema;
-#endif
-	K5BAIL(kadm5_init_with_ext_sqlite(ctx, (char *)princstr, NULL, NULL,
-	    &params, KADM5_STRUCT_VERSION, KADM5_API_VERSION_2, sqlite,
-	    flags, &hndl));
-#else
-	(void) create_schema;
-	ret = ENOTSUP;
-	snprintf(croakstr, sizeof(croakstr),
-	    "Heimdal HDB SQLite external transaction support is unavailable");
-	goto done;
-#endif
-
-done:
-	if (ret)
-		croak("%s", croakstr);
-
-	return hndl;
-}
-
 void
 my_free_ctx(krb5_context *ctx)
 {
@@ -1724,7 +1675,6 @@ mint_ticket(krb5_context ctx, kadm5_handle hndl, char *princ, int lifetime,
 #include <sys/un.h>
 
 #include <kadm5/private.h>
-#include <kadm5/kadm5-private.h>
 
 krb5_error_code
 init_kdb(krb5_context ctx, kadm5_handle hndl)
@@ -1739,7 +1689,6 @@ init_kdb(krb5_context ctx, kadm5_handle hndl)
 	db->hdb_close(ctx, db);
 	return 0;
 }
-
 #else
 krb5_error_code
 init_kdb(krb5_context ctx, kadm5_handle hndl)

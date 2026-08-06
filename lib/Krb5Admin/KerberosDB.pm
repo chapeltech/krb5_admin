@@ -323,41 +323,11 @@ sub reconnect_sqlite {
 	eval { $master = $self->KHARON_MASTER(); };
 	return if defined($master) && $master eq hostname();
 
-	my $reconnect_kadm5 = $self->{shared_hdb} && defined($self->{hndl});
-	$self->disconnect_kadm5() if $reconnect_kadm5;
-
 	$self->{dbh}->disconnect();
 	undef($self->{dbh});
 
 	$self->connect_sqlite();
 	$self->{sacls}->set_dbh($self->{dbh});
-	$self->connect_kadm5() if $reconnect_kadm5;
-}
-
-sub connect_kadm5 {
-	my ($self) = @_;
-
-	return if !defined($self->{client});
-
-	if ($self->{shared_hdb}) {
-		$self->{hndl} = Krb5Admin::C::krb5_get_kadm5_hndl_dbi_sqlite(
-		    $self->{ctx}, $self->{dbname}, $self->{client},
-		    $self->{dbh}, $self->{shared_hdb_create_schema} ? 1 : 0);
-		$self->{shared_hdb_create_schema} = 0;
-		return;
-	}
-
-	$self->{hndl} = Krb5Admin::C::krb5_get_kadm5_hndl($self->{ctx},
-	    $self->{dbname}, $self->{client});
-}
-
-sub disconnect_kadm5 {
-	my ($self) = @_;
-
-	if (defined($self->{hndl})) {
-		Krb5Admin::C::kadm5_destroy($self->{hndl});
-	}
-	undef($self->{hndl});
 }
 
 sub new {
@@ -380,36 +350,13 @@ sub new {
 	#
 	# set defaults:
 
-	my $sqlite;
+	my $sqlite   = SQL_DB_FILE;
 	my $dbname;
 	my $dbh;
-	my $sqlite_shared_hdb;
 
-	$dbname		   = $args{dbname}		if defined($args{dbname});
-	$dbh		   = $args{dbh}		if defined($args{dbh});
-	$sqlite		   = $args{sqlite}		if defined($args{sqlite});
-	$sqlite_shared_hdb = $args{sqlite_shared_hdb}	if defined($args{sqlite_shared_hdb});
-
-	$self->{shared_hdb} = 0;
-	if (!defined($sqlite_shared_hdb) && defined($dbname) &&
-	    defined($sqlite) && $dbname eq "sqlite:$sqlite") {
-		$sqlite_shared_hdb = 1;
-	}
-	if (defined($sqlite_shared_hdb) && $sqlite_shared_hdb) {
-		if (!defined($sqlite) && defined($dbname) &&
-		    $dbname =~ /^sqlite:(.+)$/) {
-			$sqlite = $1;
-		}
-		die "sqlite_shared_hdb requires sqlite or sqlite: dbname"
-		    if !defined($sqlite);
-		$dbname //= "sqlite:$sqlite";
-		$self->{shared_hdb} = 1;
-	} elsif (!defined($dbh) && !defined($sqlite) &&
-	    defined($dbname) && $dbname =~ /^sqlite:(.+)$/) {
-		$sqlite = $1;
-		$self->{shared_hdb} = 1;
-	}
-	$sqlite //= SQL_DB_FILE;
+	$dbname   = $args{dbname}	if defined($args{dbname});
+	$dbh      = $args{dbh}		if defined($args{dbh});
+	$sqlite   = $args{sqlite}	if defined($args{sqlite});
 
 	# initialize our database handle
 	$self->{dbh} = $dbh;
@@ -418,13 +365,8 @@ sub new {
 		$self->connect_sqlite();
 		$dbh = $self->{dbh};
 	}
-	if ($self->{shared_hdb}) {
-		my ($hdb_schema) = $dbh->selectrow_array(q{
-			SELECT 1 FROM sqlite_master
-			WHERE type = 'table' AND name = 'Version'
-		});
-		$self->{shared_hdb_create_schema} = !defined($hdb_schema);
-	}
+
+	my $ctx = $self->{ctx};
 
 	$self->{debug}	  = $args{debug};
 	$self->{local}	  = $args{local};
@@ -455,7 +397,10 @@ sub new {
 	$self->{deleg_to}	//= [];
 	$self->{deleg_to}	  = { map { $_ => 1 } (@{$self->{deleg_to}}) };
 
-	$self->connect_kadm5();
+	if (defined($self->{client})) {
+		$self->{hndl} = Krb5Admin::C::krb5_get_kadm5_hndl($ctx,
+		    $dbname, $self->{client});
+	}
 
 	$self->{locks} = Krb5Admin::FileLocks->new();
 	if (defined($args{testing})) {
@@ -494,7 +439,6 @@ sub new {
 	}
 
 	bless($self, $class);
-	return $self;
 }
 
 sub set_addr {
@@ -506,13 +450,18 @@ sub set_addr {
 sub set_creds {
 	my ($self, $creds) = @_;
 
-	$self->disconnect_kadm5();
+	if (defined($self->{hndl})) {
+		Krb5Admin::C::kadm5_destroy($self->{hndl});
+	}
+	undef($self->{hndl});
 	$self->{client} = $creds;
 
 	return if !defined($creds);
 
+	$self->{hndl} = Krb5Admin::C::krb5_get_kadm5_hndl($self->{ctx},
+	    $self->{dbname}, $self->{client});
+
 	$self->reconnect_sqlite();
-	$self->connect_kadm5() if !defined($self->{hndl});
 }
 
 #
@@ -544,8 +493,6 @@ sub KHARON_PRECOMMAND {
 	if (defined($rwcmds{$cmd})) {
 		$dbh->{sqlite_use_immediate_transaction} = 1;
 		$dbh->begin_work();
-		# DBD::SQLite defers BEGIN until the first statement.
-		$dbh->do('SELECT 1');
 	}
 }
 
