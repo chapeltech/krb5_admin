@@ -1,0 +1,123 @@
+#!/bin/sh
+
+set -eu
+
+KNC_REPOSITORY=ChapelTech/knc
+KNC_RELEASE=v1.12
+KHARON_REPOSITORY=ChapelTech/kharon
+KHARON_RELEASE=v0.8.4
+PREFORK_REPOSITORY=ChapelTech/prefork
+PREFORK_RELEASE=v0.3
+
+: "${RELEASE_TAG:?RELEASE_TAG must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+: "${SOURCE_DIR:?SOURCE_DIR must be set}"
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${ARTIFACT_DIR:?ARTIFACT_DIR must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
+
+version=${RELEASE_TAG#v}
+debian_version=$(sed -n '1s/.*(\([^)]*\)).*/\1/p' \
+  "$PACKAGING_DIR/debian/changelog")
+rpm_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+  "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec")
+test "$version" = "${debian_version%%-*}"
+test "$version" = "$rpm_version"
+
+host_architecture=$(dpkg --print-architecture)
+test "$TARGET_ARCHITECTURE" = "$host_architecture"
+
+apt-get update -qq
+apt-get install -y --no-install-recommends \
+  build-essential debhelper dh-autoreconf dpkg-dev file gh \
+  heimdal-dev libdbd-sqlite3-perl libdbi-perl \
+  perl sqlite3 swig
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+dependency_dir=$work_dir/dependencies
+build_dir=$work_dir/debian
+source_dir=$build_dir/source
+mkdir -p "$dependency_dir" "$source_dir"
+
+download_deb() {
+  repository=$1
+  release=$2
+  package_name=$3
+  pattern=$4
+  temporary=$(mktemp -d "$work_dir/download.XXXXXX")
+  gh release download "$release" \
+    --repo "$repository" \
+    --pattern "$pattern" \
+    --dir "$temporary"
+  selected=
+  selected_version=
+  for candidate in "$temporary"/*.deb; do
+    test -f "$candidate"
+    test "$(dpkg-deb -f "$candidate" Package)" = "$package_name"
+    test "$(dpkg-deb -f "$candidate" Architecture)" = \
+      "$TARGET_ARCHITECTURE"
+    candidate_version=$(dpkg-deb -f "$candidate" Version)
+    if test -z "$selected" || \
+        dpkg --compare-versions "$candidate_version" gt "$selected_version"; then
+      selected=$candidate
+      selected_version=$candidate_version
+    fi
+  done
+  test -n "$selected"
+  mv "$selected" "$dependency_dir/"
+  rm -rf "$temporary"
+}
+
+download_deb "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  knc "knc_*_${TARGET_ARCHITECTURE}.deb"
+download_deb "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  libknc "libknc_*_${TARGET_ARCHITECTURE}.deb"
+download_deb "$KHARON_REPOSITORY" "$KHARON_RELEASE" \
+  libkharon-perl "libkharon-perl_*_${TARGET_ARCHITECTURE}.deb"
+download_deb "$PREFORK_REPOSITORY" "$PREFORK_RELEASE" \
+  prefork "prefork_*_${TARGET_ARCHITECTURE}.deb"
+
+for package in "$dependency_dir"/*.deb; do
+  dependencies=$(dpkg-deb -f "$package" Depends || true)
+  if printf '%s\n' "$dependencies" | \
+      grep -Eq '(^|[[:space:],])heimdal([[:space:],(]|$)'; then
+    echo "$package depends on the non-distro heimdal package" >&2
+    exit 1
+  fi
+done
+
+git -C "$SOURCE_DIR" archive HEAD | tar -x -C "$source_dir"
+rm -rf "$source_dir/debian"
+cp -a "$PACKAGING_DIR/debian" "$source_dir/debian"
+
+apt-get install -y "$dependency_dir"/libkharon-perl_*.deb
+(
+  cd "$source_dir"
+  DEB_BUILD_OPTIONS="nocheck parallel=1" \
+    dpkg-buildpackage --build=binary --no-sign
+)
+
+set -- "$build_dir"/libkrb5admin-perl_*_"$TARGET_ARCHITECTURE".deb
+test "$#" -eq 1
+test -f "$1"
+client_package=$1
+apt-get install -y --no-install-recommends \
+  "$dependency_dir"/*.deb "$client_package"
+perl -MKrb5Admin::Client -e 1
+command -v krb5_admin
+command -v krb5_host
+
+mkdir -p "$ARTIFACT_DIR"
+for package in "$build_dir"/*.deb; do
+  test -f "$package"
+  package_architecture=$(dpkg-deb -f "$package" Architecture)
+  case "$package_architecture" in
+    "$TARGET_ARCHITECTURE"|all) ;;
+    *)
+      echo "$package has unexpected architecture $package_architecture" >&2
+      exit 1
+      ;;
+  esac
+  cp "$package" "$ARTIFACT_DIR/"
+done

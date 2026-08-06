@@ -1,0 +1,108 @@
+#!/bin/bash
+
+set -eu
+
+KNC_REPOSITORY=ChapelTech/knc
+KNC_RELEASE=v1.12
+KHARON_REPOSITORY=ChapelTech/kharon
+KHARON_RELEASE=v0.8.4
+PREFORK_REPOSITORY=ChapelTech/prefork
+PREFORK_RELEASE=v0.3
+
+: "${RELEASE_TAG:?RELEASE_TAG must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+: "${SOURCE_DIR:?SOURCE_DIR must be set}"
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${ARTIFACT_DIR:?ARTIFACT_DIR must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
+
+version=${RELEASE_TAG#v}
+debian_version=$(sed -n '1s/.*(\([^)]*\)).*/\1/p' \
+  "$PACKAGING_DIR/debian/changelog")
+rpm_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+  "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec")
+test "$version" = "${debian_version%%-*}"
+test "$version" = "$rpm_version"
+test "$TARGET_ARCHITECTURE" = x86_64
+test "$(uname -m)" = "$TARGET_ARCHITECTURE"
+
+dnf install -y dnf-plugins-core epel-release
+dnf config-manager --set-enabled crb
+dnf install -y \
+  e2fsprogs-devel file gcc gh gzip heimdal-devel make perl \
+  perl-DBD-SQLite perl-DBI \
+  perl-ExtUtils-MakeMaker perl-devel perl-generators \
+  redhat-rpm-config rpm-build sqlite swig systemd-rpm-macros
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+dependency_dir=$work_dir/dependencies
+top_dir=$work_dir/rpm
+mkdir -p "$dependency_dir" \
+  "$top_dir/SOURCES" "$top_dir/RPMS" "$top_dir/SRPMS"
+
+download_rpm() {
+  repository=$1
+  release=$2
+  package_name=$3
+  pattern=$4
+  temporary=$(mktemp -d "$work_dir/download.XXXXXX")
+  gh release download "$release" \
+    --repo "$repository" \
+    --pattern "$pattern" \
+    --dir "$temporary"
+  selected=$(find "$temporary" -maxdepth 1 -name '*.rpm' \
+    -print | sort -V | tail -1)
+  test -n "$selected"
+  test "$(rpm -qp --qf '%{NAME}' "$selected")" = "$package_name"
+  test "$(rpm -qp --qf '%{ARCH}' "$selected")" = \
+    "$TARGET_ARCHITECTURE"
+  mv "$selected" "$dependency_dir/"
+  rm -rf "$temporary"
+}
+
+download_rpm "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  knc 'knc-[0-9]*.el9.x86_64.rpm'
+download_rpm "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  libknc 'libknc-[0-9]*.el9.x86_64.rpm'
+download_rpm "$KHARON_REPOSITORY" "$KHARON_RELEASE" \
+  libkharon-perl 'libkharon-perl-[0-9]*.el9.x86_64.rpm'
+download_rpm "$PREFORK_REPOSITORY" "$PREFORK_RELEASE" \
+  prefork 'prefork-[0-9]*.el9.x86_64.rpm'
+
+for package in "$dependency_dir"/*.rpm; do
+  if rpm -qp --requires "$package" | grep -qx heimdal; then
+    echo "$package depends on the non-distro heimdal package" >&2
+    exit 1
+  fi
+done
+
+git -C "$SOURCE_DIR" archive --prefix="krb5_admin-$version/" HEAD | \
+  gzip -n >"$top_dir/SOURCES/krb5_admin-$version.tar.gz"
+dnf install -y "$dependency_dir"/*.rpm
+rpmbuild -ba \
+  --define "_topdir $top_dir" \
+  "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec"
+
+set -- "$top_dir"/RPMS/*/libkrb5admin-perl-[0-9]*.x86_64.rpm
+test "$#" -eq 1
+test -f "$1"
+client_package=$1
+dnf install -y "$dependency_dir"/*.rpm "$client_package"
+perl -MKrb5Admin::Client -e 1
+command -v krb5_admin
+command -v krb5_host
+
+mkdir -p "$ARTIFACT_DIR"
+for package in "$top_dir"/RPMS/*/*.rpm "$top_dir"/SRPMS/*.src.rpm; do
+  test -f "$package"
+  package_architecture=$(rpm -qp --qf '%{ARCH}' "$package")
+  case "$package_architecture" in
+    x86_64|noarch|src) ;;
+    *)
+      echo "$package has unexpected architecture $package_architecture" >&2
+      exit 1
+      ;;
+  esac
+  cp "$package" "$ARTIFACT_DIR/"
+done
