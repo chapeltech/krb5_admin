@@ -1,0 +1,113 @@
+# Maintainer: ChapelTech <packages@chapel.tech>
+pkgname=libkrb5admin-perl
+pkgver=0.4.3
+pkgrel=0
+pkgdesc="Perl Kerberos administration library and tools"
+url="https://github.com/ChapelTech/krb5_admin"
+arch="all"
+license="MIT"
+depends="
+	heimdal
+	knc
+	libkharon-perl>=0.8
+	perl
+	perl-dbd-sqlite
+	perl-dbi
+	prefork
+	"
+makedepends="
+	heimdal-dev
+	perl-dev
+	swig
+	"
+subpackages="
+	$pkgname-doc
+	$pkgname-kdc:_kdc:noarch
+	$pkgname-systemd:_systemd:noarch
+	"
+source="
+	krb5_admin-$pkgver.tar.gz
+	distro-heimdal.patch
+	"
+builddir="$srcdir/krb5_admin-$pkgver"
+
+_krb5_env="KRB5TYPE=heimdal KRB5DIR=/usr KRB5INCDIR=/usr/include KRB5LIBDIR=/usr/lib"
+build() {
+	env $_krb5_env PERL_MM_USE_DEFAULT=1 \
+		perl Makefile.PL INSTALLDIRS=vendor PREFIX=/usr
+	(
+		cd Krb5Admin
+		env $_krb5_env PERL_MM_USE_DEFAULT=1 \
+			perl Makefile.PL INSTALLDIRS=vendor PREFIX=/usr
+	)
+	sed -i \
+		-e 's|-Wl,-R/usr/lib ||g' \
+		-e 's|LD_RUN_PATH="$(LD_RUN_PATH)" ||' \
+		Krb5Admin/Makefile
+	make -j1
+}
+
+check() {
+	sed "s/__HOSTNAME__/$(hostname)/g" \
+		t/krb5.conf.in >t/krb5.conf
+	PERL5LIB="blib/lib:blib/arch:Krb5Admin/blib/lib:Krb5Admin/blib/arch" \
+		prove t/curve25519.t t/getkdc.t t/getrealm.t
+	perl -Iblib/lib -Iblib/arch -IKrb5Admin/blib/lib \
+		-IKrb5Admin/blib/arch -c scripts/prestash-notify
+}
+
+package() {
+	make install \
+		DESTDIR="$pkgdir" \
+		INSTALLDIRS=vendor
+	make -C Krb5Admin install \
+		DESTDIR="$pkgdir" \
+		INSTALLDIRS=vendor
+
+	find "$pkgdir" -type f \
+		\( -name .packlist -o -name perllocal.pod \) -delete
+	if [ -d "$pkgdir/usr/man" ]; then
+		install -d "$pkgdir/usr/share/man"
+		cp -a "$pkgdir/usr/man/." "$pkgdir/usr/share/man/"
+		rm -rf "$pkgdir/usr/man"
+	fi
+	find "$pkgdir" -depth -type d -empty -delete
+
+	install -Dm644 README "$pkgdir/usr/share/doc/$pkgname/README"
+	install -Dm644 debian/copyright \
+		"$pkgdir/usr/share/licenses/$pkgname/copyright"
+
+	install -d \
+		"$pkgdir/usr/lib/systemd/system" \
+		"$pkgdir/usr/lib/systemd/system-preset"
+	install -m644 systemd/*.service systemd/*.socket systemd/*.timer \
+		"$pkgdir/usr/lib/systemd/system/"
+	install -m644 systemd/80-krb5-admin.preset \
+		"$pkgdir/usr/lib/systemd/system-preset/"
+}
+
+_kdc() {
+	pkgdesc="KDC helper for libkrb5admin-perl"
+	depends="$pkgname=$pkgver-r$pkgrel heimdal postfix"
+
+	install -d "$subpkgdir/usr/bin"
+	mv "$pkgdir/usr/bin/krb5_setup_postfix" "$subpkgdir/usr/bin/"
+	sed -i '/^set -eu$/a\
+\
+if ! id krb5notify >/dev/null 2>\&1; then\
+\taddgroup -S krb5notify 2>/dev/null || true\
+\tadduser -S -D -H -s /sbin/nologin -G krb5notify krb5notify\
+fi' "$subpkgdir/usr/bin/krb5_setup_postfix"
+}
+
+_systemd() {
+	pkgdesc="Systemd units for libkrb5admin-perl"
+	install_if="$pkgname=$pkgver-r$pkgrel systemd"
+
+	amove usr/lib/systemd
+}
+
+sha512sums="
+SKIP  krb5_admin-0.4.3.tar.gz
+SKIP  distro-heimdal.patch
+"

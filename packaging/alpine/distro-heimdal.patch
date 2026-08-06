@@ -1,0 +1,134 @@
+diff --git a/Krb5Admin/C.c b/Krb5Admin/C.c
+index f5fcfe6..a8e9dd8 100644
+--- a/Krb5Admin/C.c
++++ b/Krb5Admin/C.c
+@@ -1513,10 +1513,20 @@ done:
+ 		croak("%s", croakstr);
+ }
+ 
++int
++have_kx509(void)
++{
++#ifdef HAVE_KX509
++	return 1;
++#else
++	return 0;
++#endif
++}
++
+ void
+ kx509(krb5_context ctx, krb5_creds *creds, char *realm, char *store)
+ {
+-#ifdef HAVE_HEIMDAL
++#ifdef HAVE_KX509
+ 	krb5_kx509_req_ctx	 req = NULL;
+ 	krb5_ccache		 ccache = NULL;
+ 	krb5_error_code		 ret = 0;
+@@ -1548,7 +1558,7 @@ done:
+ 	(void)creds;
+ 	(void)realm;
+ 	(void)store;
+-	croak("kx509 is not implemented for MIT Kerberos");
++	croak("kx509 is not implemented by this Kerberos installation");
+ #endif
+ }
+ 
+diff --git a/Krb5Admin/C.h b/Krb5Admin/C.h
+index 9c1c593..b3bb6a2 100644
+--- a/Krb5Admin/C.h
++++ b/Krb5Admin/C.h
+@@ -205,6 +205,7 @@ char	**krb5_list_princs(krb5_context, kadm5_handle, char *);
+ char	**krb5_list_pols(krb5_context, kadm5_handle, char *);
+ 
+ void	  init_store_creds(krb5_context, char *, krb5_creds *);
++int	  have_kx509(void);
+ void	  kx509(krb5_context, krb5_creds *, char *, char *);
+ 
+ krb5_error_code		 init_kdb(krb5_context, kadm5_handle);
+@@ -233,8 +234,13 @@ krb5_error_code	krb5_init_context(krb5_context *OUTPUT);
+ void		krb5_free_context(krb5_context);
+ void		my_free_ctx(krb5_context *);
+ krb5_error_code	krb5_parse_name(krb5_context, const char *, krb5_principal *);
++#ifdef HEIMDAL_MUTABLE_STRING_TO_KEY
++krb5_error_code krb5_string_to_key(krb5_context, krb5_enctype, const char *,
++				   krb5_principal, krb5_keyblock *OUTPUT);
++#else
+ krb5_error_code krb5_string_to_key(krb5_context, krb5_enctype, const char *,
+ 				   krb5_const_principal, krb5_keyblock *OUTPUT);
++#endif
+ int		kt_kvno(krb5_context, char *, char *);
+ 
+ char	**curve25519_pass1(krb5_context);
+diff --git a/Krb5Admin/Makefile.PL b/Krb5Admin/Makefile.PL
+index 1ae5cb6..bcd909e 100644
+--- a/Krb5Admin/Makefile.PL
++++ b/Krb5Admin/Makefile.PL
+@@ -28,6 +28,9 @@ if (!defined($ENV{KRB5TYPE})) {
+ 	    "this should be done by the parent Makefile.PL.\n";
+ }
+ 
++my $KRB5INCDIR = $ENV{KRB5INCDIR} // "$KRB5DIR/include";
++my $KRB5LIBDIR = $ENV{KRB5LIBDIR} // "$KRB5DIR/lib";
++
+ my $HAVE;
+ if (defined($ENV{KRB5TYPE})) {
+ 	$HAVE = '-DHAVE_MIT'		if $ENV{KRB5TYPE} eq 'mit';
+@@ -39,10 +42,23 @@ if (!defined($HAVE)) {
+ 	    ".  Must be mit or heimdal.\n";
+ }
+ 
+-if (-f "$KRB5DIR/include/krb5/hdb.h") {
++if (-f "$KRB5INCDIR/krb5/hdb.h") {
+ 	$HAVE .= ' -DHEIMDAL_INCLUDES_IN_KRB5';
+ }
+ 
++for my $header ("$KRB5INCDIR/krb5-protos.h",
++		"$KRB5INCDIR/krb5/krb5-protos.h") {
++	next if !-f $header;
++	open(my $fh, '<', $header) or die "cannot read $header: $!\n";
++	local $/;
++	my $prototypes = <$fh>;
++	$HAVE .= ' -DHAVE_KX509' if $prototypes =~ /\bkrb5_kx509_ext\b/;
++	$HAVE .= ' -DHEIMDAL_MUTABLE_STRING_TO_KEY'
++	    if $prototypes =~ /krb5_string_to_key\s*\([^;]*\bkrb5_principal\b/s;
++	close($fh);
++	last;
++}
++
+ my $DBIDIR = $INC{'DBI.pm'};
+ $DBIDIR =~ s/DBI\.pm$/auto\/DBI/;
+ 
+@@ -55,18 +71,18 @@ $args{NAME}	= 'Krb5Admin::C';
+ $args{OBJECT}	= 'C_wrap.o C.o curve25519-donna.o hkdf.o hmac.o sha1.o ' .
+ 		  'sha224-256.o sha384-512.o shatest.o usha.o';
+ 
+-$args{INC}	= "-I${KRB5DIR}/include -I${DBIDIR}";
++$args{INC}	= "-I${KRB5INCDIR} -I${DBIDIR}";
+ 
+ $args{PM}	= { 'C.pm' => '$(INST_LIB)/Krb5Admin/C.pm' };
+ 
+ if ($HAVE eq '-DHAVE_MIT') {
+-	$args{INC}	.= " -I${KRB5DIR}/include/krb5"		.
++	$args{INC}	.= " -I${KRB5INCDIR}/krb5"		.
+ 			   " -I/var/tmp/krb5-1.4.4/src/include"          .
+ 			   " -I/var/tmp/krb5-1.4.4/src/include/krb5";
+ }
+ 
+ $args{CCFLAGS}	= $Config{ccflags} . " " . $HAVE;
+-$args{LIBS}	= "-L${KRB5DIR}/lib -Wl,-R${KRB5DIR}/lib ";
++$args{LIBS}	= "-L${KRB5LIBDIR} -Wl,-R${KRB5LIBDIR} ";
+ 
+ $args{LIBS} .= "-lkrb5 -lkadm5srv";
+ 
+diff --git a/lib/Krb5Admin/Krb5Host/Local.pm b/lib/Krb5Admin/Krb5Host/Local.pm
+index 9cdb897..3a9c2b5 100644
+--- a/lib/Krb5Admin/Krb5Host/Local.pm
++++ b/lib/Krb5Admin/Krb5Host/Local.pm
+@@ -601,6 +601,7 @@ sub install_cert {
+ 	my ($self, $realm, $tix, $user, $uid) = @_;
+ 	my $certdir = $self->{certdir};
+ 
++	return if !Krb5Admin::C::have_kx509();
+ 	return if !defined($certdir);
+ 
+ 	for my $c (@$certdir) {

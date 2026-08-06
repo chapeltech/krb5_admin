@@ -1,0 +1,235 @@
+#!/bin/sh
+
+set -eu
+# shellcheck disable=SC3040 # Alpine /bin/sh is BusyBox ash.
+set -o pipefail
+
+KNC_REPOSITORY=ChapelTech/knc
+KNC_RELEASE=v1.12
+KHARON_REPOSITORY=ChapelTech/kharon
+KHARON_RELEASE=v0.8.4
+PREFORK_REPOSITORY=ChapelTech/prefork
+PREFORK_RELEASE=v0.3
+
+: "${RELEASE_TAG:?RELEASE_TAG must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+: "${SOURCE_DIR:?SOURCE_DIR must be set}"
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${ARTIFACT_DIR:?ARTIFACT_DIR must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
+
+# shellcheck disable=SC1091
+. /etc/os-release
+case "$VERSION_ID" in
+	3.24|3.24.*) ;;
+	*)
+		echo "Alpine 3.24 is required (found $VERSION_ID)" >&2
+		exit 1
+		;;
+esac
+case "$TARGET_ARCHITECTURE" in
+	x86_64|aarch64) ;;
+	*)
+		echo "unsupported Alpine architecture: $TARGET_ARCHITECTURE" >&2
+		exit 1
+		;;
+esac
+test "$(apk --print-arch)" = "$TARGET_ARCHITECTURE"
+test "$(uname -m)" = "$TARGET_ARCHITECTURE"
+
+apk add --no-cache \
+	alpine-sdk \
+	atools-apkbuild-lint \
+	github-cli \
+	heimdal-dev \
+	perl \
+	perl-dbd-sqlite \
+	perl-dbi \
+	perl-dev \
+	swig
+
+case "$RELEASE_TAG" in
+	v?*) version=${RELEASE_TAG#v} ;;
+	*)
+		echo "release tag must start with v: $RELEASE_TAG" >&2
+		exit 1
+		;;
+esac
+
+apkbuild=$PACKAGING_DIR/packaging/alpine/APKBUILD
+test -f "$apkbuild"
+test -f "$PACKAGING_DIR/debian/changelog"
+test -f "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec"
+test -d "$SOURCE_DIR/.git"
+
+package_name=$(sed -n 's/^pkgname=//p' "$apkbuild")
+package_version=$(sed -n 's/^pkgver=//p' "$apkbuild")
+package_revision=$(sed -n 's/^pkgrel=//p' "$apkbuild")
+test "$package_name" = libkrb5admin-perl
+test "$version" = "$package_version"
+apk version --check "$package_version-r$package_revision" >/dev/null
+
+debian_version=$(sed -n '1s/.*(\([^)]*\)).*/\1/p' \
+	"$PACKAGING_DIR/debian/changelog")
+rpm_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+	"$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec")
+test "$version" = "${debian_version%%-*}"
+test "$version" = "$rpm_version"
+
+source_git="safe.directory=$SOURCE_DIR"
+source_commit=$(git -c "$source_git" -C "$SOURCE_DIR" rev-parse HEAD)
+tag_commit=$(git -c "$source_git" -C "$SOURCE_DIR" \
+	rev-parse "refs/tags/$RELEASE_TAG^{commit}")
+test "$source_commit" = "$tag_commit"
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT HUP INT TERM
+dependency_dir=$work_dir/dependencies
+package_dir=$work_dir/aports/$package_name
+repository_dir=$work_dir/packages
+source_parent=$work_dir/source
+staged_source=$source_parent/krb5_admin-$version
+mkdir -p "$dependency_dir" "$package_dir" "$repository_dir" \
+	"$staged_source"
+
+apk_field() {
+	field=$2
+	case "$field" in
+		name) pkginfo_field=pkgname ;;
+		version) pkginfo_field=pkgver ;;
+		arch) pkginfo_field=arch ;;
+		*)
+			echo "Unsupported APK metadata field: $field" >&2
+			exit 1
+			;;
+	esac
+	if metadata=$(apk adbdump "$1" 2>/dev/null); then
+		printf '%s\n' "$metadata" |
+			sed -n "s/^  $field: //p" | sed -n '1p'
+	else
+		tar -xOf "$1" .PKGINFO |
+			sed -n "s/^$pkginfo_field = //p" | sed -n '1p'
+	fi
+}
+
+download_apk() {
+	repository=$1
+	release=$2
+	wanted_name=$3
+	wanted_version=${release#v}
+	temporary=$(mktemp -d "$work_dir/download.XXXXXX")
+	if ! gh release download "$release" \
+		--repo "$repository" \
+		--pattern "$wanted_name-*.apk" \
+		--dir "$temporary"; then
+		echo "No $wanted_name APK assets found in $repository $release" >&2
+		exit 1
+	fi
+
+	selected=
+	selected_version=
+	for candidate in "$temporary"/*.apk; do
+		test -f "$candidate"
+		apk verify "$candidate"
+		candidate_name=$(apk_field "$candidate" name)
+		candidate_version=$(apk_field "$candidate" version)
+		candidate_architecture=$(apk_field "$candidate" arch)
+		test -n "$candidate_name"
+		test -n "$candidate_version"
+		test -n "$candidate_architecture"
+		if [ "$candidate_name" != "$wanted_name" ]; then
+			continue
+		fi
+		case "$candidate_version" in
+			"$wanted_version"-r[0-9]*) ;;
+			*) continue ;;
+		esac
+		case "$candidate_architecture" in
+			"$TARGET_ARCHITECTURE"|noarch) ;;
+			*) continue ;;
+		esac
+		if [ -z "$selected" ] || \
+			[ "$(apk version -t "$candidate_version" \
+				"$selected_version")" = '>' ]; then
+			selected=$candidate
+			selected_version=$candidate_version
+		fi
+	done
+	if [ -z "$selected" ]; then
+		echo "No $wanted_name APK for $TARGET_ARCHITECTURE in " \
+			"$repository $release" >&2
+		exit 1
+	fi
+	mv "$selected" "$dependency_dir/"
+	rm -rf "$temporary"
+}
+
+download_apk "$KNC_REPOSITORY" "$KNC_RELEASE" knc
+download_apk "$KNC_REPOSITORY" "$KNC_RELEASE" libknc
+download_apk "$KHARON_REPOSITORY" "$KHARON_RELEASE" libkharon-perl
+download_apk "$PREFORK_REPOSITORY" "$PREFORK_RELEASE" prefork
+
+apk add "$dependency_dir"/*.apk
+
+cp "$apkbuild" "$package_dir/APKBUILD"
+cp "$PACKAGING_DIR/packaging/alpine/distro-heimdal.patch" "$package_dir/"
+git -c "$source_git" -C "$SOURCE_DIR" archive \
+	"refs/tags/$RELEASE_TAG" | tar -x -C "$staged_source"
+rm -rf "$staged_source/debian" "$staged_source/packaging/alpine"
+cp -a "$PACKAGING_DIR/debian" "$staged_source/debian"
+mkdir -p "$staged_source/packaging"
+cp -a "$PACKAGING_DIR/packaging/alpine" \
+	"$staged_source/packaging/alpine"
+tar -C "$source_parent" -czf \
+	"$package_dir/krb5_admin-$version.tar.gz" \
+	"krb5_admin-$version"
+
+if [ -z "${PACKAGER_PRIVKEY:-}" ]; then
+	builder=krb5-admin-builder
+	adduser -D -h "$work_dir/home" "$builder"
+	addgroup "$builder" abuild
+	chown -R "$builder:$builder" "$work_dir"
+	su "$builder" -c 'abuild-keygen -a -n'
+	cp "$work_dir/home"/.abuild/*.rsa.pub /etc/apk/keys/
+	su "$builder" -c "cd '$package_dir' && abuild checksum"
+	su "$builder" -c "cd '$package_dir' && apkbuild-lint APKBUILD"
+	su "$builder" -c \
+		"cd '$package_dir' && REPODEST='$repository_dir' abuild -r"
+else
+	test -f "$PACKAGER_PRIVKEY"
+	(
+		cd "$package_dir"
+		abuild -F checksum
+		apkbuild-lint APKBUILD
+		REPODEST="$repository_dir" abuild -F -r
+	)
+fi
+
+set -- "$repository_dir"/*/"$TARGET_ARCHITECTURE"/\
+"$package_name-$package_version-r$package_revision.apk"
+test "$#" -eq 1
+test -f "$1"
+client_package=$1
+apk verify "$client_package"
+apk add "$client_package"
+perl -MKrb5Admin::Client -e 1
+command -v krb5_admin
+command -v krb5_host
+
+package_list=$work_dir/packages.list
+find "$repository_dir" -type f -name '*.apk' -print | sort >"$package_list"
+test -s "$package_list"
+mkdir -p "$ARTIFACT_DIR"
+while IFS= read -r package; do
+	package_architecture=$(apk_field "$package" arch)
+	case "$package_architecture" in
+		"$TARGET_ARCHITECTURE"|noarch) ;;
+	*)
+		echo "$package has unexpected architecture $package_architecture" >&2
+		exit 1
+		;;
+	esac
+	apk verify "$package"
+	cp "$package" "$ARTIFACT_DIR/"
+	printf 'Built %s\n' "$ARTIFACT_DIR/${package##*/}"
+done <"$package_list"
