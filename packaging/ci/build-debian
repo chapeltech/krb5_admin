@@ -87,7 +87,7 @@ for package in "$dependency_dir"/*.deb; do
   fi
 done
 
-git -C "$SOURCE_DIR" archive HEAD | tar -x -C "$source_dir"
+git -C "$PACKAGING_DIR" archive HEAD | tar -x -C "$source_dir"
 rm -rf "$source_dir/debian"
 cp -a "$PACKAGING_DIR/debian" "$source_dir/debian"
 

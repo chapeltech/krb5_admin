@@ -77,7 +77,7 @@ for package in "$dependency_dir"/*.rpm; do
   fi
 done
 
-git -C "$SOURCE_DIR" archive --prefix="krb5_admin-$version/" HEAD | \
+git -C "$PACKAGING_DIR" archive --prefix="krb5_admin-$version/" HEAD | \
   gzip -n >"$top_dir/SOURCES/krb5_admin-$version.tar.gz"
 dnf install -y "$dependency_dir"/*.rpm
 rpmbuild -ba \
