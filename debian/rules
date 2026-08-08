@@ -17,8 +17,9 @@ endif
 
 override_dh_auto_configure:
 	$(KRB5_ENV) dh_auto_configure
-	cd Krb5Admin && $(KRB5_ENV) perl Makefile.PL \
-	    INSTALLDIRS=vendor PREFIX=/usr
+	$(KRB5_ENV) dh_auto_configure \
+	    --buildsystem=perl_makemaker --sourcedirectory=Krb5Admin \
+	    -- PREFIX=/usr
 
 override_dh_auto_install:
 	set -e; PERL_VENDOR_ARCH=$(PERL_VENDOR_ARCH); \
@@ -36,9 +37,13 @@ override_dh_strip:
 	: "don't"
 
 override_dh_auto_test:
+ifeq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
 	perl -Iblib/lib -Iblib/arch -IKrb5Admin/blib/lib \
 	    -IKrb5Admin/blib/arch -c scripts/prestash-notify
 	dh_auto_test
+else
+	: "tests require the target Perl runtime"
+endif
 
 override_dh_install:
 	dh_install
