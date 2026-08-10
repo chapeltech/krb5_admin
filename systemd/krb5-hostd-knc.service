@@ -1,0 +1,13 @@
+[Unit]
+Description=Kerberos host daemon KNC frontend
+Documentation=man:knc(1) man:krb5_hostd(8)
+Requires=krb5-hostd-knc.socket krb5-hostd.socket
+After=krb5-hostd.socket
+
+[Service]
+Type=simple
+Sockets=krb5-hostd-knc.socket
+StandardInput=socket
+ExecStart=/usr/libexec/prefork /usr/bin/knc -iS /run/krb5_hostd
+Restart=on-failure
+RestartSec=5s
