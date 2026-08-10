@@ -3,23 +3,19 @@
 
 package Krb5Admin::NotifyClient;
 
-use Exporter;   
+use Exporter;
 @ISA = qw(Exporter);
 @EXPORT_OK = qw{ notify_update_required };
 
-use DBI;
-use Sys::Hostname;
-use Sys::Syslog;
-use IO::Pipe;
-use Krb5Admin::Krb5Host::Client;
+use File::Temp qw(tempfile);
+use Sys::Hostname qw(hostname);
 
-my $SENDMAIL = "/usr/sbin/sendmail";
-my $CF = "/etc/postfix-prestash";
+use Krb5Admin::C;
+use Krb5Admin::Krb5Host::Client;
 
 sub notify_host {
 	my ($krb5, $host) = @_;
-	my $host_email = "notify\@$host";
-	my @sendmail = ($SENDMAIL, "-i", "-f" ,'', "-C" , "$CF", $host_email);
+	my $hdef = $krb5->query_host($host);
 
 	#
 	# Short-circuit if the host principal doesn't exist.  This
@@ -28,21 +24,20 @@ sub notify_host {
 	# we might be dealing with a cluster name for which we would
 	# not expect to find a host princ.
 
-	eval { $krb5->query("host/$host"); };
+	return if !defined($hdef);
+	eval { $krb5->query("host/$host\@$hdef->{realm}"); };
 	return if $@;
 
-	my $pid = fork();
-	if ($pid == 0) {
-		close(STDIN);
-		close(STDERR);
-		exec { $SENDMAIL } @sendmail;
-		exit(1);
-	}
-	if (!defined $pid) {
-		die [500, "Error with sendmail exec"];
-	} else {
-		waitpid($pid, 0);
-	}
+	my ($ccfh, $ccfile) = tempfile('krb5-admin-notify-XXXXXXXX',
+	    TMPDIR => 1, UNLINK => 1);
+	close($ccfh) or die "Can't close $ccfile: $!\n";
+	local $ENV{KRB5CCNAME} = "FILE:$ccfile";
+	my $princ = 'krb5_admin/' . hostname() . '@' . $hdef->{realm};
+	Krb5Admin::C::kinit_kt($krb5->{ctx}, $princ, undef,
+	    $ENV{KRB5CCNAME});
+
+	my $clnt = Krb5Admin::Krb5Host::Client->new($host);
+	$clnt->do_update();
 }
 
 sub notify_update_required {
