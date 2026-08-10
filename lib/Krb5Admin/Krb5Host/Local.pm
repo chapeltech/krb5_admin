@@ -2488,9 +2488,10 @@ sub KHARON_ACL_do_update {
 	my $client = $self->{client};
 
 	#
-	# Allow admin users and any user named krb5notify/
+	# Allow administrators, KDCs, and the legacy notification service.
 
 	return 1 if $client =~ m/^([-a-zA-Z0-9])+\/admin@.+$/;
+	return 1 if $client =~ m{^krb5_admin/[-_a-zA-Z0-9\.]+\@.+$};
 	return 1 if $client =~ m{^krb5notify(?:/[-_a-zA-Z0-9\.]+)?\@.+$};
 
 	return undef;
