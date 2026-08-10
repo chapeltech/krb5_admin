@@ -166,6 +166,19 @@ sub installbin {
 	    "	\$(NOECHO) \$(TOUCH) \$(INST_SBIN_SCRIPT)\$(DFSEP).exists\n";
 }
 
+sub test_via_harness {
+	my ($self, @args) = @_;
+	my $txt = $self->SUPER::test_via_harness(@args);
+	my $archlib = q{'$(INST_ARCHLIB)'};
+	my $libs = "$archlib, 'Krb5Admin/blib/lib', " .
+	    "'Krb5Admin/blib/arch'";
+
+	# The XS extension is built by the nested Krb5Admin Makefile.
+	$txt =~ s/\Q$archlib\E/$libs/;
+
+	return $txt;
+}
+
 sub install {
 	my ($self, @args) = @_;
 
