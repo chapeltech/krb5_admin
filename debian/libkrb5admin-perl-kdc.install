@@ -1,1 +1,4 @@
-usr/bin/krb5_setup_postfix
+usr/bin/krb5_gc_bootstrap
+usr/man/man5/krb5_admind.conf.5
+usr/man/man8/krb5_admind.8
+usr/sbin/krb5_admind

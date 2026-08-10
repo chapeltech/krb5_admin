@@ -38,12 +38,16 @@ override_dh_strip:
 
 override_dh_auto_test:
 ifeq ($(DEB_BUILD_MULTIARCH),$(DEB_HOST_MULTIARCH))
-	perl -Iblib/lib -Iblib/arch -IKrb5Admin/blib/lib \
-	    -IKrb5Admin/blib/arch -c scripts/prestash-notify
 	dh_auto_test
 else
 	: "tests require the target Perl runtime"
 endif
+
+override_dh_install:
+	dh_install
+	dh_installsystemd -pkrb5-hostd krb5-hostd.target
+	dh_installsystemd -pkrb5-prestash-refresh \
+	    krb5-prestash-refresh.service krb5-prestash-refresh.timer
 
 override_dh_builddeb:
 	dh_builddeb -- -Zgzip

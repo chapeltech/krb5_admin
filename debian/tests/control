@@ -1,0 +1,5 @@
+Tests: client-services
+Depends: libkrb5admin-perl
+
+Tests: role-packages
+Depends: @

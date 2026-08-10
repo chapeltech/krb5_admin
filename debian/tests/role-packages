@@ -1,0 +1,70 @@
+#!/bin/sh
+
+set -eu
+
+assert_owner() {
+	expected=$1
+	path=$2
+	owner=$(dpkg-query --search "$path" | cut -d: -f1)
+	test "$owner" = "$expected"
+}
+
+assert_exact_dependency() {
+	package=$1
+	dependency=$2
+	version=$(dpkg-query --show --showformat='${Version}' "$dependency")
+	depends=$(dpkg-query --show --showformat='${Depends}' "$package")
+	printf '%s\n' "$depends" | grep -F "$dependency (= $version)" >/dev/null
+}
+
+assert_owner libkrb5admin-perl-kdc /usr/sbin/krb5_admind
+assert_owner krb5-hostd /usr/sbin/krb5_hostd
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd.target
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd.socket
+assert_owner krb5-hostd /usr/lib/systemd/system/krb5-hostd-knc.socket
+assert_owner krb5-hostd \
+    /usr/lib/systemd/system-preset/80-krb5-hostd.preset
+assert_owner krb5-prestash /usr/bin/krb5_prestash
+assert_owner krb5-prestash-refresh \
+    /usr/lib/systemd/system/krb5-prestash-refresh.service
+assert_owner krb5-prestash-refresh \
+    /usr/lib/systemd/system/krb5-prestash-refresh.timer
+assert_owner krb5-prestash-refresh \
+    /usr/lib/systemd/system-preset/80-krb5-prestash-refresh.preset
+
+assert_exact_dependency libkrb5admin-perl-kdc libkrb5admin-perl
+assert_exact_dependency krb5-hostd libkrb5admin-perl
+assert_exact_dependency krb5-hostd krb5-prestash-refresh
+assert_exact_dependency krb5-prestash libkrb5admin-perl
+assert_exact_dependency krb5-prestash-refresh krb5-prestash
+
+grep -Eq '^[[:space:]]*krb5_admin[[:space:]]+2666/tcp([[:space:]]|$)' \
+    /etc/services
+
+common_files=$(dpkg-query --listfiles libkrb5admin-perl)
+if printf '%s\n' "$common_files" | \
+    grep -Eq '/(krb5_hostd|krb5_prestash|krb5-(hostd|prestash).*(service|socket|timer|target|preset))$'; then
+	echo 'libkrb5admin-perl owns host daemon or prestash role files' >&2
+	exit 1
+fi
+
+grep -Fx 'Wants=krb5-prestash-refresh.service krb5-prestash-refresh.timer' \
+    /usr/lib/systemd/system/krb5-hostd.target >/dev/null
+if grep -Eq '^(After|Requires)=.*krb5-prestash-refresh' \
+    /usr/lib/systemd/system/krb5-hostd.target; then
+	echo 'krb5-hostd.target waits for prestash refresh' >&2
+	exit 1
+fi
+
+grep -Fx 'ExecStart=/usr/bin/krb5_prestash fetch' \
+    /usr/lib/systemd/system/krb5-prestash-refresh.service >/dev/null
+grep -Fx 'WantedBy=multi-user.target' \
+    /usr/lib/systemd/system/krb5-prestash-refresh.service >/dev/null
+grep -Fx 'WantedBy=timers.target' \
+    /usr/lib/systemd/system/krb5-prestash-refresh.timer >/dev/null
+
+if dpkg-query --listfiles libkrb5admin-perl-kdc | \
+    grep -Eq '/(krb5_setup_postfix|prestash-notify)$'; then
+	echo 'KDC package contains obsolete Postfix integration' >&2
+	exit 1
+fi
