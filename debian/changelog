@@ -1,3 +1,9 @@
+libkrb5admin-perl (0.4.3-2) unstable; urgency=medium
+
+  * Split host services and credential refresh into role packages.
+
+ -- Roland C. Dowdeswell <elric@imrryr.org>  Mon, 10 Aug 2026 15:00:00 +0100
+
 libkrb5admin-perl (0.4.3) unstable; urgency=low
 
   * forgot a file in the debian packaging

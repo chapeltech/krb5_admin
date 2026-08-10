@@ -12,8 +12,35 @@ Depends: ${perl:Depends}, ${shlibs:Depends}, ${misc:Depends}, perl-modules, asga
 Description: Kerberos administration framework
  Kerberos administration framework
 
+Package: krb5-hostd
+Architecture: all
+Depends: ${misc:Depends}, libkrb5admin-perl (= ${binary:Version}), krb5-prestash-refresh (= ${binary:Version}), knc, prefork
+Breaks: libkrb5admin-perl (<< 0.4.3-2~)
+Replaces: libkrb5admin-perl (<< 0.4.3-2~)
+Description: Kerberos host administration daemon
+ Kerberos host administration daemon and its socket-activated KNC frontend.
+
+Package: krb5-prestash
+Architecture: all
+Depends: ${misc:Depends}, libkrb5admin-perl (= ${binary:Version})
+Breaks: libkrb5admin-perl (<< 0.4.3-2~)
+Replaces: libkrb5admin-perl (<< 0.4.3-2~)
+Description: Kerberos credential prestashing tool
+ Command-line tool for fetching prestashed Kerberos credentials.
+
+Package: krb5-prestash-refresh
+Architecture: all
+Depends: ${misc:Depends}, krb5-prestash (= ${binary:Version})
+Breaks: libkrb5admin-perl (<< 0.4.3-2~)
+Replaces: libkrb5admin-perl (<< 0.4.3-2~)
+Description: scheduled Kerberos credential prestash refresh
+ Systemd services for refreshing prestashed Kerberos credentials at boot and
+ on a nightly schedule.
+
 Package: libkrb5admin-perl-kdc
 Architecture: any
-Depends: ${perl:Depends}, ${shlibs:Depends}, ${misc:Depends}, asgard-heimdal-kdc, perl-modules, libdbi-perl, libdbd-sqlite3-perl, knc, libkharon-perl
+Depends: ${perl:Depends}, ${shlibs:Depends}, ${misc:Depends}, libkrb5admin-perl (= ${binary:Version}), asgard-heimdal-kdc, perl-modules, libdbi-perl, libdbd-sqlite3-perl, knc, libkharon-perl, prefork
+Breaks: libkrb5admin-perl (<< 0.4.3-2~)
+Replaces: libkrb5admin-perl (<< 0.4.3-2~)
 Description: Kerberos administration framework code for only the kdc
  Kerberos administration framework the parts that go on the kdc

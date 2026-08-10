@@ -1,0 +1,6 @@
+#!/bin/sh
+
+set -eu
+
+grep -Eq '^[[:space:]]*krb5_admin[[:space:]]+2666/tcp([[:space:]]|$)' \
+    /etc/services
