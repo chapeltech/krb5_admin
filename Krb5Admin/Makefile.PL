@@ -27,6 +27,9 @@ if (!defined($ENV{KRB5TYPE})) {
 	    "this should be done by the parent Makefile.PL.\n";
 }
 
+my $KRB5INCDIR = $ENV{KRB5INCDIR} // "$KRB5DIR/include";
+my $KRB5LIBDIR = $ENV{KRB5LIBDIR} // "$KRB5DIR/lib";
+
 my $HAVE;
 if (defined($ENV{KRB5TYPE})) {
 	$HAVE = '-DHAVE_MIT'		if $ENV{KRB5TYPE} eq 'mit';
@@ -38,7 +41,7 @@ if (!defined($HAVE)) {
 	    ".  Must be mit or heimdal.\n";
 }
 
-if (-f "$KRB5DIR/include/krb5/hdb.h") {
+if (-f "$KRB5INCDIR/krb5/hdb.h") {
 	$HAVE .= ' -DHEIMDAL_INCLUDES_IN_KRB5';
 }
 
@@ -51,18 +54,18 @@ $args{NAME}	= 'Krb5Admin::C';
 $args{OBJECT}	= 'C_wrap.o C.o curve25519-donna.o hkdf.o hmac.o sha1.o ' .
 		  'sha224-256.o sha384-512.o shatest.o usha.o';
 
-$args{INC}	= "-I${KRB5DIR}/include";
+$args{INC}	= "-I${KRB5INCDIR}";
 
 $args{PM}	= { 'C.pm' => '$(INST_LIB)/Krb5Admin/C.pm' };
 
 if ($HAVE eq '-DHAVE_MIT') {
-	$args{INC}	.= " -I${KRB5DIR}/include/krb5"		.
+	$args{INC}	.= " -I${KRB5INCDIR}/krb5"		.
 			   " -I/var/tmp/krb5-1.4.4/src/include"          .
 			   " -I/var/tmp/krb5-1.4.4/src/include/krb5";
 }
 
 $args{CCFLAGS}	= $Config{ccflags} . " " . $HAVE;
-$args{LIBS}	= "-L${KRB5DIR}/lib -Wl,-R${KRB5DIR}/lib ";
+$args{LIBS}	= "-L${KRB5LIBDIR} -Wl,-R${KRB5LIBDIR} ";
 
 $args{LIBS} .= "-lkrb5 -lkadm5srv";
 
@@ -87,4 +90,3 @@ $rfc6234_files: rfc6234.txt
 
 EOM
 }
-
