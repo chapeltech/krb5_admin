@@ -1,0 +1,59 @@
+#!/bin/bash
+
+set -Eeuo pipefail
+
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
+
+if test "$#" -ne 1 || test -z "$1"; then
+    echo "usage: $0 OUTPUT_DIRECTORY" >&2
+    exit 2
+fi
+test "$TARGET_ARCHITECTURE" = x86_64
+
+# shellcheck disable=SC1091
+source "$PACKAGING_DIR/packaging/heimdal-release.env"
+
+output_dir=$1
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+
+gh release download "$HEIMDAL_RELEASE" \
+    --repo "$HEIMDAL_REPOSITORY" \
+    --pattern 'asgard-heimdal-*.el9.x86_64.rpm' \
+    --dir "$work_dir"
+gh release download "$HEIMDAL_RELEASE" \
+    --repo "$HEIMDAL_REPOSITORY" --pattern SHA256SUMS \
+    --dir "$work_dir"
+
+selected_sums=$work_dir/SHA256SUMS.selected
+grep '[.]el9[.]x86_64[.]rpm$' "$work_dir/SHA256SUMS" >"$selected_sums"
+test "$(wc -l <"$selected_sums")" -eq 4
+(
+    cd "$work_dir"
+    sha256sum -c "$(basename "$selected_sums")"
+)
+
+expected_names=(
+    asgard-heimdal-clients
+    asgard-heimdal-devel
+    asgard-heimdal-kdc
+    asgard-heimdal-libs
+)
+actual_names=()
+shopt -s nullglob
+packages=("$work_dir"/*.rpm)
+test "${#packages[@]}" -eq 4
+for package in "${packages[@]}"; do
+    test "$(rpm -qp --qf '%{ARCH}' "$package")" = "$TARGET_ARCHITECTURE"
+    test "$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$package")" = \
+        "$HEIMDAL_RPM_VERSION"
+    actual_names+=("$(rpm -qp --qf '%{NAME}' "$package")")
+done
+mapfile -t actual_names < <(printf '%s\n' "${actual_names[@]}" | sort)
+test "$(printf '%s\n' "${expected_names[@]}")" = \
+    "$(printf '%s\n' "${actual_names[@]}")"
+
+mkdir -p "$output_dir"
+cp "${packages[@]}" "$output_dir/"

@@ -42,7 +42,7 @@ top_dir=$work_dir/rpm
 mkdir -p "$dependency_dir" "$heimdal_dir" \
   "$top_dir/SOURCES" "$top_dir/RPMS" "$top_dir/SRPMS"
 
-"$PACKAGING_DIR/packaging/ci/build-heimdal-rpm" "$heimdal_dir"
+"$PACKAGING_DIR/packaging/ci/fetch-heimdal-rpm" "$heimdal_dir"
 dnf install -y \
   "$heimdal_dir"/asgard-heimdal-libs-[0-9]*.el9.x86_64.rpm \
   "$heimdal_dir"/asgard-heimdal-clients-[0-9]*.el9.x86_64.rpm \

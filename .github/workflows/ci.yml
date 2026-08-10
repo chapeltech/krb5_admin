@@ -13,19 +13,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and test
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           docker run --rm \
+            --env GH_TOKEN \
             -v "$PWD:/src:ro" \
             debian:trixie-slim /bin/sh -euxc '
               apt-get update -qq
               apt-get install -y --no-install-recommends \
-                build-essential ca-certificates git \
+                build-essential ca-certificates gh git \
                 libdbd-sqlite3-perl libdbi-perl perl swig
               cp -a /src /tmp/krb5_admin
               mkdir /tmp/heimdal-packages
               PACKAGING_DIR=/tmp/krb5_admin \
                 TARGET_ARCHITECTURE=$(dpkg --print-architecture) \
-                /tmp/krb5_admin/packaging/ci/build-heimdal-debian \
+                /tmp/krb5_admin/packaging/ci/fetch-heimdal-debian \
                   /tmp/heimdal-packages
               apt-get install -y --no-install-recommends \
                 /tmp/heimdal-packages/asgard-heimdal-libs_*.deb \

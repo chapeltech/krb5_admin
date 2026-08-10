@@ -31,7 +31,7 @@ apt-get update -qq
 apt-get install -y --no-install-recommends \
   build-essential ca-certificates debhelper dh-autoreconf dpkg-dev file gh git \
   libdbd-sqlite3-perl libdbi-perl \
-  perl sqlite3 swig
+  perl perl-xs-dev sqlite3 swig
 
 work_dir=$(mktemp -d)
 trap 'rm -rf "$work_dir"' EXIT
@@ -41,7 +41,7 @@ build_dir=$work_dir/debian
 source_dir=$build_dir/source
 mkdir -p "$dependency_dir" "$heimdal_dir" "$source_dir"
 
-"$PACKAGING_DIR/packaging/ci/build-heimdal-debian" "$heimdal_dir"
+"$PACKAGING_DIR/packaging/ci/fetch-heimdal-debian" "$heimdal_dir"
 apt-get install -y --no-install-recommends \
   "$heimdal_dir"/asgard-heimdal-libs_*_"$TARGET_ARCHITECTURE".deb \
   "$heimdal_dir"/asgard-heimdal-clients_*_"$TARGET_ARCHITECTURE".deb \
