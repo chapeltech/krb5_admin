@@ -9,6 +9,7 @@ use MIME::Base64;
 
 use DBI;
 use Fcntl ':flock';
+use IO::File;
 use Sys::Hostname;
 use Sys::Syslog;
 use Data::Dumper;
@@ -982,6 +983,18 @@ sub drop_db {
 sub KHARON_ACL_master { return 1; }
 
 sub master { hostname(); }
+
+sub KHARON_IV_print_ca { KHARON_IV_NO_ARGS(@_); }
+sub KHARON_ACL_print_ca { return 1; }
+
+sub print_ca {
+	my $file = '/etc/krb5/ca-pub.pem';
+	my $fh = IO::File->new($file, 'r');
+	die "Can't open $file: $!\n" if !defined($fh);
+
+	local $/;
+	return <$fh>;
+}
 
 sub KHARON_IV_has_feature	{ KHARON_IV_ONE_SCALAR(@_); }
 sub KHARON_ACL_has_feature	{ return 1; }
