@@ -53,8 +53,7 @@ sub new {
 	}
 
 	if (defined($princ)) {
-		my $ktname = $ENV{'KRB5_KTNAME'} // 'FILE:/etc/krb5.keytab';
-		Krb5Admin::C::kinit_kt($ctx, $princ, $ktname, undef);
+		Krb5Admin::C::kinit_kt($ctx, $princ, undef, undef);
 	}
 
 	$pec->SetServerDefaults({KncService=>'krb5_admin', PeerPort=>$port});
