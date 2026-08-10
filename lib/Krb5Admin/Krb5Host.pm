@@ -45,7 +45,7 @@ Krb5Admin::Krb5Host - manipulate Kerberos settings and credentials on a host
 
 Krb5Admin::Krb5Host manipulates Kerberos settings and credentials
 on a host.  Currently, the modules support keytab management, the
-installation of prestashed tickets, and various administrative
+installation of prestashed credentials, and various administrative
 testing functions designed to ensure that the host is correctly
 configured and the aforementioned credentials are working.
 
@@ -107,8 +107,8 @@ the default set of keys will be validated and/or installed.
 
 =item $krbhst->install_ticket(PRINC, TICKET)
 
-Will install a ticket for user PRINC.  No return value.  Exceptions are
-thrown on error.
+Will install credentials for user PRINC.  No return value.  Exceptions
+are thrown on error.
 
 =item $krbhst->fetch_tickets(@REALMS)
 

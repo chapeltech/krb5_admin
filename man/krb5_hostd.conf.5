@@ -95,6 +95,11 @@ if this is specified, then all of the prestashed tickets for
 will have the UID of
 .Ar username .
 .El
+.It $certdir
+is an array reference containing a list of places to install kx509
+certificates for prestashed tickets when they are fetched.
+Its syntax matches
+.Ar $tixdir .
 .It $use_fetch
 is a boolean value which tells
 .Xr krb5_hostd 8

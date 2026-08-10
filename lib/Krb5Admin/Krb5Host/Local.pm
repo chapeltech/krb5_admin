@@ -71,6 +71,7 @@ our %kt_opts = (
 	invoking_user		=> undef,
 	kadmin			=> 0,
 	keytab_retries		=> 3,
+	certdir			=> ['/var/spool/certs'],
 	kmdb			=> undef,	# XXXrcd: more logic
 	kmdb_config		=> '/etc/krb5/krb5_admind.conf',
 	kmdb_config_provided	=> 0,
@@ -440,14 +441,12 @@ sub install_ticket {
 	my ($self, $princstr, $tix) = @_;
 	my $ctx = $self->{ctx};
 
-	my $tixdir = $self->{tixdir};
-
 	if (!defined($princstr)) {
-		die "install_tickets called on undefined value.\n"
+		die "install_ticket called on undefined value.\n"
 	}
 
 	if (!defined($tix)) {
-		die "install_tickets called without \$tix.\n"
+		die "install_ticket called without \$tix.\n"
 	}
 
 	my @princ = Krb5Admin::C::krb5_parse_name($ctx, $princstr);
@@ -472,88 +471,86 @@ sub install_ticket {
 
 	my ($realm, $user) = @princ;
 
-	my @errs;
-	for my $t (@$tixdir) {
-		if (ref($t) eq '') {
-			$self->install_ticket_in_dir($realm, $user, undef, $tix, $t);
-			next;
-		}
-
-		if (ref($t) ne 'HASH') {
-			# This is a permanent error, no need to try
-			# any other tix---the config is broken.
-			die "install_ticket: Can't grok \$tixdir " .
-			    "(from config)\n";
-		}
-
-		#
-		# Now, ref($t) must equal HASH:
-
-		my ($name, $passwd, $uid);
-
-		if (defined($t->{username})) {
-			($name, $passwd, $uid) = getpwnam($t->{username});
-
-			if (!defined($uid)) {
-				die "$t->{username} has no uid " .
-				    "from \$tixdir\n";
-			}
-		}
-
-		# It's okay for username to be undef, but not path.
-		if (!defined($t->{path})) {
-			die "\$tixdir hashes must specify ``path''";
-		}
-
-		$self->install_ticket_in_dir($realm, $user, $uid, $tix,
-		    $t->{path});
+	for my $dir (@{$self->{tixdir}}) {
+		$self->install_cred_in_dir($realm, $user, $tix, $dir,
+		    'tixdir', \&install_ticket_in_dir);
 	}
 
-	die join(', ', @errs) if @errs > 0;
+	for my $dir (@{$self->{certdir} // []}) {
+		$self->install_cred_in_dir($realm, $user, $tix, $dir,
+		    'certdir', \&install_cert_in_dir);
+	}
+}
+
+sub install_cred_in_dir {
+	my ($self, $realm, $user, $tix, $dir, $dirname, $install) = @_;
+	my ($name, $passwd, $uid) = getpwnam($user);
+	my $warn;
+
+	if (!defined($name) || $name ne $user) {
+		die "Tickets received for illegal username: %s", $user
+			unless ($user =~ m{^\w(-?\w+)*$});
+		$warn = sprintf "Tickets received for non-existent user %s",
+		    $user;
+		$uid = 0;
+		$user .= ':nopwent';
+	}
+
+	if (ref($dir) eq 'HASH') {
+		if (defined($dir->{username})) {
+			($name, $passwd, $uid) = getpwnam($dir->{username});
+			die "$dir->{username} has no uid from \$$dirname\n"
+			    if !defined($uid);
+		}
+
+		die "\$$dirname hashes must specify ``path''"
+		    if !defined($dir->{path});
+		$dir = $dir->{path};
+	} elsif (ref($dir) ne '') {
+		die "install_ticket: Can't grok \$$dirname (from config)\n";
+	}
+
+	$install->($self, $realm, $user, $uid, $warn, $tix, $dir);
+}
+
+sub setup_realm_spool_dir {
+	my ($self, $realm, $dir, $what) = @_;
+	my $defrealm = $self->get_defrealm();
+
+	mkdir($dir, 0755);
+	chmod(0755, $dir);
+
+	my @st = stat($dir);
+	if ($st[4] ne '0') {
+		die "Will not install $what to non-root-owned directory!";
+	}
+
+	force_symlink(".", "$dir/\@$defrealm");
+
+	if ($realm ne $defrealm) {
+		$dir .= "/\@$realm";
+		mkdir($dir, 0755);
+		chmod(0755, $dir);
+	}
+
+	return $dir;
 }
 
 sub install_ticket_in_dir {
-	my ($self, $realm, $user, $override_uid, $tix, $tixdir) = @_;
+	my ($self, $realm, $user, $uid, $warn, $tix, $tixdir) = @_;
 	my $ctx = $self->{ctx};
-
-	my ($name, $passwd, $uid) = getpwnam($user);
-	my $warn;
 
 	# We first setup the correct directories unconditionally, let's
 	# just make sure that they are all in place:
 	#
 	# XXXrcd: may not always be able to create $tixdir?
 
-	my $defrealm = $self->get_defrealm();
+	$tixdir = $self->setup_realm_spool_dir($realm, $tixdir,
+	    "prestashed tickets");
 
-	mkdir($tixdir, 0755);
-	chmod(0755, $tixdir);
-
-	my @st = stat($tixdir);
-	if ($st[4] ne '0') {
-		die "Will not prestash to non-root-owned directory!";
-	}
-
-	force_symlink(".", "$tixdir/\@$defrealm");
-
-	if ($realm ne $defrealm) {
-		$tixdir .= "/\@$realm";
-		mkdir($tixdir, 0755);
-		chmod(0755, $tixdir);
-	}
-
-	if (!defined($name) || $name ne $user) {
-		die "Tickets received for illegal username: %s", $user
-			unless ($user =~ m{^\w(-?\w+)*$});
-		$warn = sprintf "Tickets received for non-existent user %s",
-			$user;
-		$uid = 0;
-		$user .= ":nopwent";
-	} else {
+	if (!defined($warn)) {
 		unlink("$tixdir/$user:nopwent");
 	}
-
-	$uid = $override_uid	if defined($override_uid);
 
 	# Install new tickets atomically by writing to a temporary ccache,
 	# and moving it into place.
@@ -582,6 +579,37 @@ sub install_ticket_in_dir {
 	return;
 }
 
+sub install_cert_in_dir {
+	my ($self, $realm, $user, $uid, $warn, $tix, $certdir) = @_;
+
+	$certdir = $self->setup_realm_spool_dir($realm, $certdir,
+	    "prestashed certificates");
+
+	if (!defined($warn)) {
+		unlink("$certdir/$user:nopwent");
+	}
+
+	my $cert_fn = "$certdir/$user";
+	my $cert_tmp = "$certdir/.$user";
+	my $store = "PEM-FILE:$cert_tmp";
+	my $ok = eval {
+		Krb5Admin::C::kx509($self->{ctx}, $tix, $realm, $store);
+		chown($uid, 0, $cert_tmp) or
+		    die "$0: chown($cert_tmp): $!\n";
+		chmod(0600, $cert_tmp) or
+		    die "$0: chmod($cert_tmp): $!\n";
+		rename($cert_tmp, $cert_fn) or
+		    die "$0: rename($cert_tmp, $cert_fn): $!\n";
+		1;
+	};
+	if (!$ok) {
+		my $err = $@;
+		unlink($cert_tmp);
+		die "failed to install client certificate for $user: $err";
+	}
+	die "$warn\n" if defined($warn);
+}
+
 sub fetch_tickets_realm {
 	my ($self, $clnt, $realm) = @_;
 	my $ctx = $self->{ctx};
@@ -599,7 +627,7 @@ sub fetch_tickets_realm {
 		my @princ = Krb5Admin::C::krb5_parse_name($ctx, $princstr);
 
 		if ($princ[0] ne $realm) {
-			my $err = "failed to install prestashed ticket for " .
+			my $err = "failed to install prestashed credentials for " .
 			    "$princstr: realm doesn't match $realm";
 			push(@errs, $err);
 			syslog('err', "%s", $err);
@@ -610,9 +638,9 @@ sub fetch_tickets_realm {
 		if ($@) {
 			push(@errs, $@);
 			syslog('err', "%s", "failed to install prestashed " .
-			    "ticket for $princstr: $@");
+			    "credentials for $princstr: $@");
 		} else {
-			syslog('info', "installed prestashed ticket for %s",
+			syslog('info', "installed prestashed credentials for %s",
 			    $princstr);
 		}
 	}
