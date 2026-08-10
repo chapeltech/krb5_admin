@@ -9,6 +9,8 @@
 .Nd kerberos administration daemon
 .Sh SYNOPSIS
 .Nm
+.Op Fl P
+.Op Fl c Ar conf_file
 .Sh DESCRIPTION
 .Nm
 is the a daemon that runs on each host that provides the facility
@@ -20,6 +22,12 @@ It expects to be spawned as an inetd-style service via
 .Pp
 The options are as follows:
 .Bl -tag -width indentxxxxxx
+.It Fl P
+accept connections from the listening socket on standard input.
+This mode is used when
+.Nm
+is run by
+.Xr prefork 1 .
 .It Fl c Ar conf_file
 specifies the location of the configuration file.
 Defaults to
@@ -27,4 +35,5 @@ Defaults to
 .El
 .Sh SEE ALSO
 .Xr knc 1 ,
+.Xr prefork 1 ,
 .Xr krb5_hostd.conf 5 .

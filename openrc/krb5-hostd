@@ -1,0 +1,15 @@
+#!/sbin/openrc-run
+# shellcheck shell=sh disable=SC2034
+
+description="Kerberos host daemon"
+supervisor="supervise-daemon"
+command="/usr/sbin/inetd"
+command_args="-f -e /etc/krb5/krb5-hostd.inetd"
+pidfile="/run/${RC_SVCNAME}.pid"
+respawn_delay=5
+respawn_max=0
+
+depend() {
+	need krb5-hostd-local net
+	use logger
+}

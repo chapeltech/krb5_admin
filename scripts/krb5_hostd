@@ -23,19 +23,20 @@ sub HELP_MESSAGE {
 
 sub usage {
 
-	print STDERR "Usage: krb5_hostd [-c conf_file]\n";
+	print STDERR "Usage: krb5_hostd [-P] [-c conf_file]\n";
 	exit(1);
 }
 
 openlog('krb5_hostd', 'pid', 'auth');
 
 my %opts;
-getopts('c:v', \%opts) or usage();
+getopts('Pc:v', \%opts) or usage();
 
 my %config;
 $config{config}			= $KRB5_KEYTAB_CONFIG;
 $config{config}			= $opts{c}		if  defined($opts{c});
 $config{config_provided}	= defined($opts{c});
+$config{preforked}		= 1			if exists($opts{P});
 $config{verbose}		= 1			if exists($opts{'v'});
 
 load_krb5hostd_config(\%config);
