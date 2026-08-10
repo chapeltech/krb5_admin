@@ -1430,6 +1430,37 @@ done:
 		croak("%s", croakstr);
 }
 
+void
+kx509(krb5_context ctx, krb5_creds *creds, char *realm, char *store)
+{
+	krb5_kx509_req_ctx	 req = NULL;
+	krb5_ccache		 ccache = NULL;
+	krb5_error_code		 ret = 0;
+	char			 croakstr[2048] = "";
+
+	if (!creds)
+		croak("kx509: missing credentials");
+	if (!store || !store[0])
+		croak("kx509: missing certificate store");
+
+	/* Avoid reopening the installed FILE cache after it is user-owned. */
+	K5BAIL(krb5_cc_new_unique(ctx, krb5_cc_type_memory, NULL, &ccache));
+	K5BAIL(krb5_cc_initialize(ctx, ccache, creds->client));
+	K5BAIL(krb5_cc_store_cred(ctx, ccache, creds));
+	K5BAIL(krb5_kx509_ctx_init(ctx, &req));
+	if (realm && realm[0])
+		K5BAIL(krb5_kx509_ctx_set_realm(ctx, req, realm));
+	K5BAIL(krb5_kx509_ext(ctx, req, ccache, store, NULL));
+
+done:
+	if (req)
+		krb5_kx509_ctx_free(ctx, &req);
+	if (ccache)
+		krb5_cc_destroy(ctx, ccache);
+	if (ret)
+		croak("%s", croakstr);
+}
+
 #ifdef HAVE_HEIMDAL
 
 #undef warn		/* Conflict between Perl and <err.h> via <hdb.h> */
