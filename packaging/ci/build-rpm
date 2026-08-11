@@ -1,0 +1,183 @@
+#!/bin/bash
+
+set -eu
+
+KNC_REPOSITORY=ChapelTech/knc
+KNC_RELEASE=v1.13
+KHARON_REPOSITORY=ChapelTech/kharon
+KHARON_RELEASE=v0.8.4
+PREFORK_REPOSITORY=ChapelTech/prefork
+PREFORK_RELEASE=v0.4
+
+: "${RELEASE_TAG:?RELEASE_TAG must be set}"
+: "${TARGET_ARCHITECTURE:?TARGET_ARCHITECTURE must be set}"
+: "${SOURCE_DIR:?SOURCE_DIR must be set}"
+: "${PACKAGING_DIR:?PACKAGING_DIR must be set}"
+: "${ARTIFACT_DIR:?ARTIFACT_DIR must be set}"
+: "${GH_TOKEN:?GH_TOKEN must be set}"
+
+version=${RELEASE_TAG#v}
+debian_version=$(sed -n '1s/.*(\([^)]*\)).*/\1/p' \
+  "$PACKAGING_DIR/debian/changelog")
+rpm_version=$(sed -n 's/^Version:[[:space:]]*//p' \
+  "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec")
+test "$version" = "${debian_version%%-*}"
+test "$version" = "$rpm_version"
+test "$TARGET_ARCHITECTURE" = x86_64
+test "$(uname -m)" = "$TARGET_ARCHITECTURE"
+
+dnf install -y dnf-plugins-core epel-release
+dnf config-manager --set-enabled crb
+dnf install -y \
+  ca-certificates e2fsprogs-devel file gcc gh git gzip make perl \
+  perl-DBD-SQLite perl-DBI \
+  perl-ExtUtils-MakeMaker perl-devel perl-generators \
+  redhat-rpm-config rpm-build sqlite swig systemd systemd-rpm-macros
+
+work_dir=$(mktemp -d)
+trap 'rm -rf "$work_dir"' EXIT
+dependency_dir=$work_dir/dependencies
+heimdal_dir=$work_dir/heimdal
+top_dir=$work_dir/rpm
+mkdir -p "$dependency_dir" "$heimdal_dir" \
+  "$top_dir/SOURCES" "$top_dir/RPMS" "$top_dir/SRPMS"
+
+"$PACKAGING_DIR/packaging/ci/fetch-heimdal-rpm" "$heimdal_dir"
+dnf install -y \
+  "$heimdal_dir"/asgard-heimdal-libs-[0-9]*.el9.x86_64.rpm \
+  "$heimdal_dir"/asgard-heimdal-clients-[0-9]*.el9.x86_64.rpm \
+  "$heimdal_dir"/asgard-heimdal-devel-[0-9]*.el9.x86_64.rpm
+
+download_rpm() {
+  repository=$1
+  release=$2
+  package_name=$3
+  pattern=$4
+  temporary=$(mktemp -d "$work_dir/download.XXXXXX")
+  gh release download "$release" \
+    --repo "$repository" \
+    --pattern "$pattern" \
+    --dir "$temporary"
+  selected=$(find "$temporary" -maxdepth 1 -name '*.rpm' \
+    -print | sort -V | tail -1)
+  test -n "$selected"
+  test "$(rpm -qp --qf '%{NAME}' "$selected")" = "$package_name"
+  test "$(rpm -qp --qf '%{ARCH}' "$selected")" = \
+    "$TARGET_ARCHITECTURE"
+  mv "$selected" "$dependency_dir/"
+  rm -rf "$temporary"
+}
+
+download_rpm "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  knc 'knc-[0-9]*.el9.x86_64.rpm'
+download_rpm "$KNC_REPOSITORY" "$KNC_RELEASE" \
+  libknc 'libknc-[0-9]*.el9.x86_64.rpm'
+download_rpm "$KHARON_REPOSITORY" "$KHARON_RELEASE" \
+  libkharon-perl 'libkharon-perl-[0-9]*.el9.x86_64.rpm'
+download_rpm "$PREFORK_REPOSITORY" "$PREFORK_RELEASE" \
+  prefork 'prefork-[0-9]*.el9.x86_64.rpm'
+
+for package in "$dependency_dir"/*.rpm; do
+  if rpm -qp --requires "$package" | grep -qx heimdal; then
+    echo "$package depends on the non-distro heimdal package" >&2
+    exit 1
+  fi
+done
+
+git -c safe.directory="$SOURCE_DIR" -C "$SOURCE_DIR" \
+  archive --prefix="krb5_admin-$version/" HEAD | \
+  gzip -n >"$top_dir/SOURCES/krb5_admin-$version.tar.gz"
+dnf install -y "$dependency_dir"/*.rpm
+rpmbuild -ba \
+  --define "_topdir $top_dir" \
+  "$PACKAGING_DIR/packaging/rpm/libkrb5admin-perl.spec"
+
+set -- "$top_dir"/RPMS/*/libkrb5admin-perl-[0-9]*.x86_64.rpm
+test "$#" -eq 1
+test -f "$1"
+client_package=$1
+
+set -- "$top_dir"/RPMS/*/krb5-hostd-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+hostd_package=$1
+set -- "$top_dir"/RPMS/*/krb5-prestash-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+prestash_package=$1
+set -- "$top_dir"/RPMS/*/krb5-prestash-refresh-[0-9]*.noarch.rpm
+test "$#" -eq 1
+test -f "$1"
+refresh_package=$1
+set -- "$top_dir"/RPMS/*/libkrb5admin-perl-kdc-[0-9]*.x86_64.rpm
+test "$#" -eq 1
+test -f "$1"
+kdc_package=$1
+
+client_nvr=$(rpm -qp --qf '%{VERSION}-%{RELEASE}' "$client_package")
+rpm -qp --requires "$client_package" | grep -qx knc
+rpm -qp --requires "$client_package" | \
+  grep -Eq '^asgard-heimdal-clients(\(x86-64\))?$'
+rpm -qp --requires "$client_package" | \
+  grep -Eq '^asgard-heimdal-libs(\(x86-64\))?$'
+rpm -qp --requires "$hostd_package" | \
+  grep -E "^libkrb5admin-perl(\(x86-64\))? = $client_nvr$"
+rpm -qp --requires "$hostd_package" | \
+  grep -Fx "krb5-prestash-refresh = $client_nvr"
+rpm -qp --requires "$prestash_package" | \
+  grep -E "^libkrb5admin-perl(\\(x86-64\\))? = $client_nvr$"
+rpm -qp --requires "$refresh_package" | \
+  grep -Fx "krb5-prestash = $client_nvr"
+rpm -qp --requires "$kdc_package" | \
+  grep -E "^libkrb5admin-perl(\\(x86-64\\))? = $client_nvr$"
+rpm -qp --requires "$kdc_package" | grep -qx prefork
+
+if rpm -qpl "$client_package" | grep -Eq \
+    '/(krb5_hostd|krb5_prestash|krb5-(hostd|prestash).*[.](service|socket|timer|target))$'; then
+  echo "$client_package contains role-owned files" >&2
+  exit 1
+fi
+rpm -qpl "$hostd_package" | grep -q '/krb5-hostd.target$'
+rpm -qpl "$refresh_package" | grep -q '/krb5-prestash-refresh.timer$'
+rpm -qpl "$kdc_package" | grep -q '/krb5_admind$'
+if rpm -qpl "$kdc_package" | grep -q '/prestash-notify$'; then
+  echo "$kdc_package contains the obsolete Postfix notifier" >&2
+  exit 1
+fi
+
+dnf install -y "$dependency_dir"/*.rpm "$client_package"
+perl -MKrb5Admin::Client -e 1
+command -v krb5_admin
+command -v krb5_host
+test "$(command -v kx509)" = /usr/bin/kx509
+extension=$(rpm -qlp "$client_package" | grep '/Krb5Admin/C/C[.]so$')
+extension_dependencies=$(ldd "$extension")
+printf '%s\n' "$extension_dependencies"
+printf '%s\n' "$extension_dependencies" | \
+  grep -F '/usr/lib64/asgard/lib/libkrb5.so'
+printf '%s\n' "$extension_dependencies" | \
+  grep -F '/usr/lib64/asgard/lib/libkadm5srv.so'
+dnf install -y "$hostd_package" "$prestash_package" "$refresh_package"
+command -v krb5_hostd
+command -v krb5_prestash
+test "$(rpm -qf --qf '%{NAME}-%{VERSION}-%{RELEASE}' \
+    /usr/sbin/krb5_hostd)" = krb5-hostd-"$client_nvr"
+test "$(rpm -qf --qf '%{NAME}-%{VERSION}-%{RELEASE}' \
+    /usr/bin/krb5_prestash)" = krb5-prestash-"$client_nvr"
+test "$(systemctl is-enabled krb5-hostd.target)" = enabled
+test "$(systemctl is-enabled krb5-prestash-refresh.timer)" = enabled
+
+mkdir -p "$ARTIFACT_DIR"
+for package in "$heimdal_dir"/*.rpm \
+    "$top_dir"/RPMS/*/*.rpm "$top_dir"/SRPMS/*.src.rpm; do
+  test -f "$package"
+  package_architecture=$(rpm -qp --qf '%{ARCH}' "$package")
+  case "$package_architecture" in
+    x86_64|noarch|src) ;;
+    *)
+      echo "$package has unexpected architecture $package_architecture" >&2
+      exit 1
+      ;;
+  esac
+  cp "$package" "$ARTIFACT_DIR/"
+done

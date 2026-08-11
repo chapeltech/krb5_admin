@@ -1,0 +1,24 @@
+---
+name: Release packages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to backfill
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release-packages:
+    uses: ChapelTech/pkgs/.github/workflows/release-packages.yml@master
+    with:
+      release_tag: ${{ github.event.release.tag_name || inputs.release_tag }}
+      packaging_ref: ${{ github.event.release.tag_name || github.workflow_sha }}
+      build_alpine: false
+    secrets: inherit
