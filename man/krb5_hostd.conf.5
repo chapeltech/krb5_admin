@@ -19,7 +19,7 @@ The syntax is the same as the format for
 and, in fact, in most installations one is a symlink to the other.
 The syntax is a Perl snippet which is evaluated and is expected to
 set the following variables:
-.Bl -tag -width @allowed_enctypesxxx
+.Bl -tag -width %prestash_clientsxxx
 .It @admin_users
 is a list of users who are allowed to perform administrative functions.
 That is, they can operate on other user's keytabs and avoid the system
@@ -73,6 +73,26 @@ command line.
 An empty list preserves the default behavior of fetching from the
 Kerberos default realm.
 Explicit command-line realms override this list.
+.It %prestash_clients
+maps a destination realm to the fully qualified Windows machine principal
+which
+.Xr krb5_prestash 1
+will use to authenticate when fetching tickets from that realm.
+For example:
+.Bd -literal
+	%prestash_clients = (
+		'ASGARD.REALM' => 'hostname$@WINDOWS.REALM',
+	);
+.Ed
+.Pp
+The named principal is obtained from the standard keytab and is used
+exactly as configured.
+It must be a fully qualified, one-component Windows machine principal;
+it is never derived from the local hostname.
+Realms not present in this hash continue to use the local
+.Li host/FQDN
+principal.
+The local FQDN is passed explicitly to the server for every realm.
 .It %krb5_libs
 is a hash mapping Kerberos library versions to an array ref of supported
 encryption types.

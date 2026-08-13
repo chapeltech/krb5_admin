@@ -81,6 +81,7 @@ our %kt_opts = (
 	ktdir			=> undef,
 	ktroot			=> undef,
 	local			=> 0,
+	prestash_clients	=> {},
 	prestash_realms	=> [],
 	subdomain_prefix	=> '',
 	testing			=> 0,
@@ -138,6 +139,40 @@ sub internal_set_opt {
 		@l = @{$val};
 		$self->{admin_users} = { map { $_ => 1 } @l };
 		return;
+	}
+
+	if ($opt eq 'prestash_clients' && defined($val)) {
+		if (ref($val) ne 'HASH') {
+			die "prestash_clients must be of type HASH but is " .
+			    "of type " . ref($val) . "\n";
+		}
+
+		for my $realm (keys %$val) {
+			my $client = $val->{$realm};
+			my @realm;
+			my @client;
+
+			die "prestash_clients realm must not be empty\n"
+			    if $realm eq '';
+			die "prestash_clients value for $realm must be a scalar\n"
+			    if !defined($client) || ref($client) ne '';
+
+			eval {
+				@realm = Krb5Admin::C::krb5_parse_name($self->{ctx},
+				    "host/validation\@$realm");
+				@client = Krb5Admin::C::krb5_parse_name($self->{ctx},
+				    $client);
+			};
+			die "Invalid prestash_clients entry for $realm: $@"
+			    if $@;
+			die "Invalid prestash destination realm: $realm\n"
+			    if @realm != 3 || $realm[0] ne $realm;
+			die "prestash_clients value for $realm must be a fully " .
+			    "qualified Windows machine principal\n"
+			    if @client != 2 || $client[0] eq '' ||
+			    $client[1] !~ /^.+\$$/ ||
+			    unparse_princ(\@client) ne $client;
+		}
 	}
 
 	#
@@ -612,7 +647,7 @@ sub install_cert_in_dir {
 }
 
 sub fetch_tickets_realm {
-	my ($self, $clnt, $realm) = @_;
+	my ($self, $clnt, $realm, $host) = @_;
 	my $ctx = $self->{ctx};
 	my @errs;
 
@@ -622,7 +657,7 @@ sub fetch_tickets_realm {
 		$kmdb = Krb5Admin::Client->new($clnt, {realm=>$realm});
 	}
 
-	my $tix = $kmdb->fetch_tickets($realm);
+	my $tix = $kmdb->fetch_tickets($realm, $host);
 
 	for my $princstr (keys %$tix) {
 		my @princ = Krb5Admin::C::krb5_parse_name($ctx, $princstr);
@@ -661,7 +696,8 @@ sub fetch_tickets {
 
 	$self->use_private_krb5ccname();
 
-	my $clnt = 'host/' .  [host_list($self->{myname})]->[0];
+	my $host = [host_list($self->{myname})]->[0];
+	my $default_clnt = 'host/' . $host;
 
 	if (@realms == 0 && @{$self->{prestash_realms}} > 0) {
 		@realms = @{$self->{prestash_realms}};
@@ -669,9 +705,14 @@ sub fetch_tickets {
 	@realms = ($self->get_defrealm())	if @realms == 0;
 
 	for my $realm (@realms) {
+		my $clnt = $default_clnt;
+		if (exists($self->{prestash_clients}->{$realm})) {
+			$clnt = $self->{prestash_clients}->{$realm};
+		}
 		eval {
 			$self->{locks}->run_with_exlock(":::PRESTASH:::",
-			    \&fetch_tickets_realm, $self, $clnt, $realm);
+			    \&fetch_tickets_realm, $self, $clnt, $realm,
+			    $host);
 		};
 		push(@errs, $@) if $@;
 	}

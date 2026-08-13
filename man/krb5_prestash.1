@@ -76,6 +76,15 @@ list from
 is used.
 If that list is empty, tickets are fetched from the Kerberos default
 realm, preserving the default behavior.
+The local FQDN is passed explicitly to the server for every realm.
+For a destination realm present in the
+.Va %prestash_clients
+hash,
+.Nm
+authenticates with the exact configured Windows machine principal.
+Other realms continue to use the local
+.Li host/FQDN
+principal.
 This command must be run as root as it must change the ownership of
 the installed credentials caches to the appropriate users.
 .It insert Ar principal Ar host Oo Ar host ... Oc

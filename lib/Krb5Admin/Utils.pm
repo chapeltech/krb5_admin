@@ -99,6 +99,7 @@ sub mk_krb5host_with_config {
 		user_libs	 => $config->{user_libs},
 		use_fetch	 => $config->{use_fetch},
 		prestash_realms  => $config->{prestash_realms},
+		prestash_clients => $config->{prestash_clients},
 		ext_sync_func	 => $config->{ext_sync_func},
 
 		ktdir		 => $config->{ktdir},
@@ -181,6 +182,7 @@ sub load_krb5hostd_config {
 	$config->{user_libs}		  = \%user_libs;
 	$config->{use_fetch}		  =  $use_fetch;
 	$config->{prestash_realms}	  = \@prestash_realms;
+	$config->{prestash_clients}	  = \%prestash_clients;
 	$config->{ktdir}		  =  $ktdir;
 	$config->{lockdir}		  =  $lockdir;
 	$config->{ext_sync_func}	  =  $ext_sync_func;

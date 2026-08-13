@@ -78,6 +78,15 @@ REALM2 or REALM3.
 is a hash that maps a Windows principal to a list of host principals which
 it may retrieve.
 The Windows principal's components must be lower case.
+The mapping also authorizes
+.Xr krb5_prestash 1
+ticket retrieval when the client is a one-component Windows machine
+principal.
+For that operation, the configured target must exactly match
+.Li host/FQDN@DESTINATION.REALM ,
+and the administrative host record for
+.Li FQDN
+must exist with its realm set to the Windows principal's realm.
 This hash can be used when migrating from using Windows Active Directory
 to provide Kerberos for UNIX hosts to a strictly UNIX KDC framework.
 .It Ar %xrealm_bootstrap
@@ -109,6 +118,7 @@ The default value is 300.
 Syntax errors will terminate parsing causing all subsequent configuration
 to be ignored and so it is critical that they not be present.
 .Sh SEE ALSO
+.Xr krb5_prestash 1 ,
 .Xr krb5_admind 8 .
 .Sh AUTHORS
 .Nm

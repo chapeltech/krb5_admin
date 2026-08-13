@@ -143,6 +143,20 @@ sub is_account_map {
 	return 1;
 }
 
+sub _win_xrealm_targets {
+	my ($self, @princ) = @_;
+
+	return () if @princ < 2;
+
+	my $canonical = unparse_princ([$princ[0],
+	    map { lc($_) } @princ[1..$#princ]]);
+	my $mapping = $self->{win_xrealm_bootstrap};
+
+	return () if ref($mapping) ne 'HASH' ||
+	    ref($mapping->{$canonical}) ne 'ARRAY';
+	return @{$mapping->{$canonical}};
+}
+
 #
 # This function supplies the logic which we use to provide self-service
 # keytab management.  This is a default and it can be overridden.  The
@@ -264,14 +278,7 @@ sub acl_keytab {
 	# and expect the lookup keys in win_xrealm_bootstrap to be
 	# likewise lower case.
 
-	my $up_sprinc =
-	    unparse_princ([$sprinc[0],
-			   map {lc $_} @sprinc[1..$#sprinc]]);
-	my $win_xrealm_bootstrap = $self->{win_xrealm_bootstrap};
-	if (ref($win_xrealm_bootstrap) eq 'HASH' &&
-	    ref($win_xrealm_bootstrap->{$up_sprinc}) eq 'ARRAY') {
-		push(@xbs, @{$win_xrealm_bootstrap->{$up_sprinc}});
-	}
+	push(@xbs, $self->_win_xrealm_targets(@sprinc));
 
 	my $up_pprinc = unparse_princ(\@pprinc);
 	return 1 if $host_ok == 1 && grep {$_ eq $up_pprinc} @xbs;
@@ -2885,11 +2892,17 @@ sub KHARON_ACL_fetch_tickets {
 
 	my @sprinc = Krb5Admin::C::krb5_parse_name($ctx, $self->{client});
 
-	return if @sprinc != 3;
-	return if $sprinc[1] ne 'host';
-
-	$host //= $sprinc[2];
-	return if $sprinc[2] ne $host;
+	if (@sprinc == 3 && $sprinc[1] eq 'host') {
+		$host //= $sprinc[2];
+		return if $sprinc[2] ne $host;
+	} elsif (@sprinc == 2 && $sprinc[1] =~ /^.+\$$/) {
+		return if !defined($host);
+		my $target = unparse_princ([$realm, 'host', $host]);
+		return if !grep { $_ eq $target }
+		    $self->_win_xrealm_targets(@sprinc);
+	} else {
+		return;
+	}
 
 	# Now, we must also check to ensure that the client is
 	# in the correct realm for the host that we have in our DB.
