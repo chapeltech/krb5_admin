@@ -163,7 +163,6 @@ sub internal_set_opt {
 		die "Option $opt must be of type " . ref($kt_opts{$opt}) .
 		    " but is of type " . ref($val) . "\n";
 	}
-
 	$self->{$opt} = $val;
 }
 
@@ -612,7 +611,7 @@ sub install_cert_in_dir {
 }
 
 sub fetch_tickets_realm {
-	my ($self, $clnt, $realm) = @_;
+	my ($self, $clnt, $realm, $host) = @_;
 	my $ctx = $self->{ctx};
 	my @errs;
 
@@ -622,7 +621,7 @@ sub fetch_tickets_realm {
 		$kmdb = Krb5Admin::Client->new($clnt, {realm=>$realm});
 	}
 
-	my $tix = $kmdb->fetch_tickets($realm);
+	my $tix = $kmdb->fetch_tickets($realm, $host);
 
 	for my $princstr (keys %$tix) {
 		my @princ = Krb5Admin::C::krb5_parse_name($ctx, $princstr);
@@ -661,17 +660,23 @@ sub fetch_tickets {
 
 	$self->use_private_krb5ccname();
 
-	my $clnt = 'host/' .  [host_list($self->{myname})]->[0];
+	my $fqdn = [host_list($self->{myname})]->[0];
+	my $default_clnt = 'host/' . $fqdn;
 
-	if (@realms == 0 && @{$self->{prestash_realms}} > 0) {
-		@realms = @{$self->{prestash_realms}};
-	}
+	my %rh = map {
+		ref($_) eq 'HASH' ? ($_->{realm} => $_->{from_princ})
+				  : ($_          => $default_clnt)
+	} @{$self->{prestash_realms}};
+
+	@realms = keys %rh			if @realms == 0;
 	@realms = ($self->get_defrealm())	if @realms == 0;
 
 	for my $realm (@realms) {
+		my $clnt = $rh{$realm} // $default_clnt;
+
 		eval {
 			$self->{locks}->run_with_exlock(":::PRESTASH:::",
-			    \&fetch_tickets_realm, $self, $clnt, $realm);
+			    \&fetch_tickets_realm, $self, $clnt, $realm, $fqdn);
 		};
 		push(@errs, $@) if $@;
 	}
@@ -2509,18 +2514,8 @@ sub do_update {
 	# XXX: We're assuming the KDC handles only one realm, ideally the KDC
 	# should provide the desired realm.
 
-	my $ctx = $self->{ctx};
-	my ($realm, @dummy) = parse_princ($ctx, $self->{client});
+	my ($realm, @dummy) = parse_princ($self->{ctx}, $self->{client});
 
-	my $kmdb = $self->get_hostbased_kmdb($realm, $self->{client});
-
-	# We slap the get_hostbased_kmdb handle on to the global kmdb
-	# handle here to make master work. This should be OK, because
-	# nothing else in this execution of the hostd will try to use
-	# this kmdb.
-
-	$self->{kmdb} = $kmdb;
-	$self->{kmdb}->master();
 	$self->fetch_tickets($realm);
 	return "OK";
 }

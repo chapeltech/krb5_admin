@@ -518,7 +518,10 @@ hosts, which MUST already be configured for the principal.
 
 =item $kmdb->fetch_tickets(REALM[, HOST])
 
-Will fetch tickets.
+Fetches the prestashed tickets in REALM for HOST.  HOST may be omitted
+when the authenticated client is a C<host/FQDN> principal, in which case
+that principal's FQDN is used.  Callers authenticating with a
+one-component Windows machine principal must provide HOST explicitly.
 
 =item $kmdb->remove_ticket(PRINCIPAL, HOST, [HOST ...])
 

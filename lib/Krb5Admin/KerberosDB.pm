@@ -143,6 +143,20 @@ sub is_account_map {
 	return 1;
 }
 
+sub win_xrealm_bootstrap_targets {
+	my ($self, @sprinc) = @_;
+
+	# Windows principal components are case insensitive.  Realm names are
+	# not, so only canonicalize the components used by the map key.
+	my $canonical = unparse_princ([$sprinc[0],
+	    map { lc($_) } @sprinc[1..$#sprinc]]);
+	my $map = $self->{win_xrealm_bootstrap};
+
+	return () if ref($map) ne 'HASH' ||
+	    ref($map->{$canonical}) ne 'ARRAY';
+	return @{$map->{$canonical}};
+}
+
 #
 # This function supplies the logic which we use to provide self-service
 # keytab management.  This is a default and it can be overridden.  The
@@ -259,19 +273,7 @@ sub acl_keytab {
 	}
 
 	#
-	# Windows principals are case insensitive, so we canonicalize
-	# the non-realm part of the principal name to lower-case,
-	# and expect the lookup keys in win_xrealm_bootstrap to be
-	# likewise lower case.
-
-	my $up_sprinc =
-	    unparse_princ([$sprinc[0],
-			   map {lc $_} @sprinc[1..$#sprinc]]);
-	my $win_xrealm_bootstrap = $self->{win_xrealm_bootstrap};
-	if (ref($win_xrealm_bootstrap) eq 'HASH' &&
-	    ref($win_xrealm_bootstrap->{$up_sprinc}) eq 'ARRAY') {
-		push(@xbs, @{$win_xrealm_bootstrap->{$up_sprinc}});
-	}
+	push(@xbs, $self->win_xrealm_bootstrap_targets(@sprinc));
 
 	my $up_pprinc = unparse_princ(\@pprinc);
 	return 1 if $host_ok == 1 && grep {$_ eq $up_pprinc} @xbs;
@@ -2885,17 +2887,25 @@ sub KHARON_ACL_fetch_tickets {
 
 	my @sprinc = Krb5Admin::C::krb5_parse_name($ctx, $self->{client});
 
-	return if @sprinc != 3;
-	return if $sprinc[1] ne 'host';
+	if (@sprinc == 3 && $sprinc[1] eq 'host') {
+		return if defined($host) && $host ne $sprinc[2];
+		$host = $sprinc[2];
+	} elsif (@sprinc == 2 && $sprinc[1] =~ /\$$/) {
+		return if !defined($realm) || !defined($host);
 
-	$host //= $sprinc[2];
-	return if $sprinc[2] ne $host;
+		my $target = unparse_princ([$realm, 'host', $host]);
+		my @targets = $self->win_xrealm_bootstrap_targets(@sprinc);
+		return if !grep { ref($_) eq '' && $_ eq $target } @targets;
+	} else {
+		return;
+	}
 
 	# Now, we must also check to ensure that the client is
 	# in the correct realm for the host that we have in our DB.
 
-	$host = $self->query_host($host);
-	return if !defined($host) || $host->{realm} ne $sprinc[0];
+	my $host_record = $self->query_host($host);
+	return if !defined($host_record) ||
+	    $host_record->{realm} ne $sprinc[0];
 
 	# The request is authorised.
 	return 1;

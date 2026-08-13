@@ -16,23 +16,24 @@ use Krb5Admin::Krb5Host::Client;
 sub notify_host {
 	my ($krb5, $host) = @_;
 	my $hdef = $krb5->query_host($host);
+	my $realm = Krb5Admin::C::krb5_get_realm($krb5->{ctx});
 
 	#
-	# Short-circuit if the host principal doesn't exist.  This
-	# means that the host hasn't yet been bootstrapped.  We delay
-	# this test until this function as in previous opportunities,
-	# we might be dealing with a cluster name for which we would
-	# not expect to find a host princ.
+	# Short-circuit if a local host principal doesn't exist.  This means
+	# that the host hasn't yet been bootstrapped.  A remote-realm host
+	# principal is not in our HDB, so the notification connection tests it.
 
 	return if !defined($hdef);
-	eval { $krb5->query("host/$host\@$hdef->{realm}"); };
-	return if $@;
+	if ($hdef->{realm} eq $realm) {
+		eval { $krb5->query("host/$host\@$realm"); };
+		return if $@;
+	}
 
 	my ($ccfh, $ccfile) = tempfile('krb5-admin-notify-XXXXXXXX',
 	    TMPDIR => 1, UNLINK => 1);
 	close($ccfh) or die "Can't close $ccfile: $!\n";
 	local $ENV{KRB5CCNAME} = "FILE:$ccfile";
-	my $princ = 'krb5_admin/' . hostname() . '@' . $hdef->{realm};
+	my $princ = 'krb5_admin/' . hostname() . '@' . $realm;
 	Krb5Admin::C::kinit_kt($krb5->{ctx}, $princ, undef,
 	    $ENV{KRB5CCNAME});
 

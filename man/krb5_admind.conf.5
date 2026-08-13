@@ -78,6 +78,20 @@ REALM2 or REALM3.
 is a hash that maps a Windows principal to a list of host principals which
 it may retrieve.
 The Windows principal's components must be lower case.
+For example:
+.Bd -literal -offset indent
+	%win_xrealm_bootstrap = (
+		'hostname$@WINDOWS.REALM' => [
+			'host/host.example@ASGARD.REALM',
+		],
+	);
+.Ed
+.Pp
+The same exact mapping permits the one-component Windows machine account
+to fetch prestashed tickets from the mapped destination realm for the
+mapped FQDN.
+The host database record must exist and its realm must match the Windows
+principal's realm.
 This hash can be used when migrating from using Windows Active Directory
 to provide Kerberos for UNIX hosts to a strictly UNIX KDC framework.
 .It Ar %xrealm_bootstrap

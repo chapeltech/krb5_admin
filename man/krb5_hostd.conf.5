@@ -65,11 +65,44 @@ specifies the location of
 .Pa /etc/krb5/krb5_admind.conf .
 Use of this variable implies a local KDC database.
 .It @prestash_realms
-is the list of realms from which
+is the list of sources from which
 .Nm krb5_prestash
 .Cm fetch
 will fetch prestashed tickets when no realms are specified on the
 command line.
+Each entry is either a realm scalar or a hash reference whose expected
+fields are
+.Ar realm
+and
+.Ar from_princ .
+A scalar fetches from that realm using the default
+.Ar host/FQDN
+client principal.
+A hash fetches from
+.Ar realm
+while obtaining credentials for exactly
+.Ar from_princ
+from the standard keytab.
+For example:
+.Bd -literal -offset indent
+	@prestash_realms = (
+		'ASGARD.REALM',
+		{
+			realm => 'MIDGARD.REALM',
+			from_princ => 'hostname$@WINDOWS.REALM',
+		},
+	);
+.Ed
+.Pp
+The local FQDN is supplied explicitly as the target host for every fetch.
+An empty list preserves the default behavior of fetching from the
+Kerberos default realm.
+Explicit command-line realms select the realms to fetch.
+A realm with a matching configured hash entry uses its
+.Ar from_princ ;
+other realms use the default
+.Ar host/FQDN
+client principal.
 .It %krb5_libs
 is a hash mapping Kerberos library versions to an array ref of supported
 encryption types.
