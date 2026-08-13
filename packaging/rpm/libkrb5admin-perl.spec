@@ -1,5 +1,5 @@
 Name:           libkrb5admin-perl
-Version:        0.5
+Version:        0.5.1
 Release:        1%{?dist}
 Summary:        Perl Kerberos administration library and tools
 License:        MIT
@@ -184,5 +184,8 @@ fi
 %{_mandir}/man8/krb5_admind.8*
 
 %changelog
+* Thu Aug 13 2026 Roland C. Dowdeswell <elric@imrryr.org> - 0.5.1-1
+- Support configurable cross-realm prestash sources.
+
 * Mon Aug 10 2026 Roland C. Dowdeswell <elric@imrryr.org> - 0.5-1
 - Split host services into role packages using the private Asgard Heimdal.
