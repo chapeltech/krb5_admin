@@ -59,7 +59,7 @@ make the output a bit more verbose.
 The commands are:
 .Pp
 .Bl -ohang -offset ind
-.It fetch Ar REALM Oo Ar REALM ... Oc
+.It fetch Oo Ar REALM ... Oc
 will fetch all of the configured prestashed tickets for the current
 host
 .Po as defined by
@@ -126,6 +126,7 @@ will cause queries to use host expansion.
 .Sh SEE ALSO
 .Xr knc 1 ,
 .Xr krb5_admin 1 ,
+.Xr krb5_hostd.conf 5 ,
 .Xr krb5_admind 8 ,
 .Xr krb5_keytab 8 ,
 .Xr krb5_prestash 1 .

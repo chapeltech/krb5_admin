@@ -64,6 +64,12 @@ An exception must be thrown if the synchronisation fails.
 specifies the location of
 .Pa /etc/krb5/krb5_admind.conf .
 Use of this variable implies a local KDC database.
+.It @prestash_realms
+is the list of realms from which
+.Nm krb5_prestash
+.Cm fetch
+will fetch prestashed tickets when no realms are specified on the
+command line.
 .It %krb5_libs
 is a hash mapping Kerberos library versions to an array ref of supported
 encryption types.
@@ -125,6 +131,7 @@ Administrative users may not over-ride this restriction.
 Syntax errors will terminate parsing causing all subsequent configuration
 to be ignored and so it is critical that they not be present.
 .Sh SEE ALSO
+.Xr krb5_prestash 1 ,
 .Xr krb5_hostd 8 ,
 .Xr krb5_keytab 8 .
 .Sh AUTHORS

@@ -202,7 +202,7 @@ sub usage {
 	print STDERR "\tremove <principal> <host>[ <host>]*\n";
 	print STDERR "\tquery [\"principal\"|\"host\"] " .
 	    "[<principal>|<host>]\n";
-	print STDERR "\tfetch <realm>[ <realm>]*\n";
+	print STDERR "\tfetch [<realm> ...]\n";
 
 	print STDERR "\n    Synonyms: add = insert, delete = remove\n";
 	exit(1);

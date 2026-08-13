@@ -114,6 +114,7 @@ are thrown on error.
 
 Fetch and install the configured prestashed tickets for the host.
 @REALMS, if specified, will cause the KDCs for each Realm to be
-contacted.
+contacted.  Otherwise, the configured C<prestash_realms> are used when
+non-empty, falling back to the Kerberos default realm.
 
 =back
