@@ -81,6 +81,7 @@ our %kt_opts = (
 	ktdir			=> undef,
 	ktroot			=> undef,
 	local			=> 0,
+	prestash_realms	=> [],
 	subdomain_prefix	=> '',
 	testing			=> 0,
 	tixdir			=> ['/var/spool/tickets'],
@@ -662,6 +663,9 @@ sub fetch_tickets {
 
 	my $clnt = 'host/' .  [host_list($self->{myname})]->[0];
 
+	if (@realms == 0 && @{$self->{prestash_realms}} > 0) {
+		@realms = @{$self->{prestash_realms}};
+	}
 	@realms = ($self->get_defrealm())	if @realms == 0;
 
 	for my $realm (@realms) {

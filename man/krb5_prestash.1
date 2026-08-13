@@ -59,7 +59,7 @@ make the output a bit more verbose.
 The commands are:
 .Pp
 .Bl -ohang -offset ind
-.It fetch Ar REALM Oo Ar REALM ... Oc
+.It fetch Oo Ar REALM ... Oc
 will fetch all of the configured prestashed tickets for the current
 host
 .Po as defined by
@@ -67,6 +67,15 @@ host
 .Pc
 and install them in
 .Pa /var/spool/tickets .
+When one or more realms are specified, they override the configured
+realm list.
+Otherwise, the non-empty
+.Va @prestash_realms
+list from
+.Xr krb5_hostd.conf 5
+is used.
+If that list is empty, tickets are fetched from the Kerberos default
+realm, preserving the default behavior.
 This command must be run as root as it must change the ownership of
 the installed credentials caches to the appropriate users.
 .It insert Ar principal Ar host Oo Ar host ... Oc
@@ -126,6 +135,7 @@ will cause queries to use host expansion.
 .Sh SEE ALSO
 .Xr knc 1 ,
 .Xr krb5_admin 1 ,
+.Xr krb5_hostd.conf 5 ,
 .Xr krb5_admind 8 ,
 .Xr krb5_keytab 8 ,
 .Xr krb5_prestash 1 .
