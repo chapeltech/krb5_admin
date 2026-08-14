@@ -143,18 +143,22 @@ sub is_account_map {
 	return 1;
 }
 
-sub win_xrealm_bootstrap_targets {
-	my ($self, @sprinc) = @_;
+sub is_windows_xrealm_host {
+	my ($self, $host, $target_realm, @princ) = @_;
 
-	# Windows principal components are case insensitive.  Realm names are
-	# not, so only canonicalize the components used by the map key.
-	my $canonical = unparse_princ([$sprinc[0],
-	    map { lc($_) } @sprinc[1..$#sprinc]]);
-	my $map = $self->{win_xrealm_bootstrap};
+	return if @princ != 2 || $princ[1] !~ /\$$/;
 
-	return () if ref($map) ne 'HASH' ||
-	    ref($map->{$canonical}) ne 'ARRAY';
-	return @{$map->{$canonical}};
+	my $h = $self->query_host($host);
+	return if !defined($h) || $h->{realm} ne $princ[0];
+
+	my $source = $self->_query_realm($princ[0]);
+	return if !defined($source) || !defined($source->{remote_kind}) ||
+	    $source->{remote_kind} ne 'windows_ad';
+
+	my $target = $self->_query_realm($target_realm);
+	return if !defined($target);
+
+	return grep { $_ eq $princ[0] } @{$target->{trust}};
 }
 
 #
@@ -272,11 +276,10 @@ sub acl_keytab {
 		@xbs = map { unparse_princ([$_, @sprinc[1,2]]) } @xbs;
 	}
 
-	#
-	push(@xbs, $self->win_xrealm_bootstrap_targets(@sprinc));
-
 	my $up_pprinc = unparse_princ(\@pprinc);
 	return 1 if $host_ok == 1 && grep {$_ eq $up_pprinc} @xbs;
+	return 1 if $host_ok == 1 && $pprinc[1] eq 'host' &&
+	    $self->is_windows_xrealm_host($pprinc[2], $pprinc[0], @sprinc);
 
 	return undef;
 }
@@ -390,7 +393,6 @@ sub new {
 	$self->{deleg_to}		= $args{deleg_to};
 	$self->{subdomain_prefix}	= $args{subdomain_prefix};
 	$self->{xrealm_bootstrap}	= $args{xrealm_bootstrap};
-	$self->{win_xrealm_bootstrap}	= $args{win_xrealm_bootstrap};
 	$self->{prestash_xrealm}	= $args{prestash_xrealm};
 
 	#
@@ -643,6 +645,19 @@ our %field_desc = (
 	# Begin Externally populated tables these tables are
 	# populated externally.
 	#
+	realms		=> {
+		pkey		=> 'realm',
+		uniq		=> [qw/realm/],
+		fields		=> [qw/realm remote_kind/],
+		lists		=> [[qw/realm_trusts realm trusted_realm trust/]],
+		wontgrow	=> 0,
+	},
+	realm_trusts	=> {
+		pkey		=> undef,
+		uniq		=> [],
+		fields		=> [qw/realm trusted_realm/],
+		wontgrow	=> 1,
+	},
 
 	external_account_principal_map => {
 		pkey		=> [qw/servicename accountname instance realm/],
@@ -2431,6 +2446,13 @@ sub query_host {
 	return {map { $_ => $ret->{$_} } @fields};
 }
 
+sub _query_realm {
+	my ($self, $realm) = @_;
+
+	return generic_query($self->{dbh}, \%field_desc, 'realms', ['realm'],
+	    realm => $realm);
+}
+
 sub KHARON_IV_bind_host {
 	my ($self, $cmd, $host, $binding) = @_;
 	my $ctx = $self->{ctx};
@@ -2892,10 +2914,7 @@ sub KHARON_ACL_fetch_tickets {
 		$host = $sprinc[2];
 	} elsif (@sprinc == 2 && $sprinc[1] =~ /\$$/) {
 		return if !defined($realm) || !defined($host);
-
-		my $target = unparse_princ([$realm, 'host', $host]);
-		my @targets = $self->win_xrealm_bootstrap_targets(@sprinc);
-		return if !grep { ref($_) eq '' && $_ eq $target } @targets;
+		return if !$self->is_windows_xrealm_host($host, $realm, @sprinc);
 	} else {
 		return;
 	}

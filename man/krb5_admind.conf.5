@@ -16,7 +16,7 @@ is the configuration file for
 .Xr krb5_admind 8 .
 The syntax is a Perl snippet which is evaluated and is expected to
 set the following variables:
-.Bl -tag -width %win_xrealm_bootstrapx
+.Bl -tag -width %xrealm_bootstrapx
 .It Ar $allow_fetch
 is a boolean value which indicates whether
 .Xr krb5_admind 8
@@ -74,26 +74,6 @@ E.g.
 .Pp
 means that principals in REALM1 may be prestashed on hosts that are in
 REALM2 or REALM3.
-.It Ar %win_xrealm_bootstrap
-is a hash that maps a Windows principal to a list of host principals which
-it may retrieve.
-The Windows principal's components must be lower case.
-For example:
-.Bd -literal -offset indent
-	%win_xrealm_bootstrap = (
-		'hostname$@WINDOWS.REALM' => [
-			'host/host.example@ASGARD.REALM',
-		],
-	);
-.Ed
-.Pp
-The same exact mapping permits the one-component Windows machine account
-to fetch prestashed tickets from the mapped destination realm for the
-mapped FQDN.
-The host database record must exist and its realm must match the Windows
-principal's realm.
-This hash can be used when migrating from using Windows Active Directory
-to provide Kerberos for UNIX hosts to a strictly UNIX KDC framework.
 .It Ar %xrealm_bootstrap
 is a hash which has keys that are Kerberos realms with values that are
 an array ref of Kerberos realms.

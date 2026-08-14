@@ -63,7 +63,6 @@ sub mk_kmdb_with_config {
 		deleg_to		=> $config->{deleg_to},
 		enable_host_subdomain	=> $config->{enable_host_subdomain},
 		xrealm_bootstrap	=> $config->{xrealm_bootstrap},
-		win_xrealm_bootstrap	=> $config->{win_xrealm_bootstrap},
 		prestash_xrealm		=> $config->{prestash_xrealm},
 		sqlite			=> $config->{sqlite},
 		dbname			=> $config->{dbname},
@@ -158,7 +157,6 @@ sub load_config {
 	$config->{maxconns}		  = $maxconns;
 	$config->{kmdb_class}		  = $kmdb_class;
 	$config->{xrealm_bootstrap}	  = \%xrealm_bootstrap;
-	$config->{win_xrealm_bootstrap}	  = \%win_xrealm_bootstrap;
 	$config->{prestash_xrealm}	  = \%prestash_xrealm;
 	$config->{timeout}		//= $timeout;
 

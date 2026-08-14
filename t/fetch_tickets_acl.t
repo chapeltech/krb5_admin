@@ -1,5 +1,6 @@
 #!/usr/pkg/bin/perl
 
+use DBI;
 use Test::More;
 
 use Krb5Admin::C;
@@ -20,89 +21,69 @@ use warnings;
 }
 
 my $ctx = Krb5Admin::C::krb5_init_context();
-my $fqdn = 'host.example';
 my $destination = 'ASGARD.REALM';
 my $windows_realm = 'WINDOWS.REALM';
-my $target = "host/$fqdn\@$destination";
+
+sub make_db {
+	my (%args) = @_;
+	my $host = $args{host} // 'host.example';
+	my $host_realm = $args{host_realm} // $windows_realm;
+	my $kind = $args{kind} // 'windows_ad';
+	my $dbh = DBI->connect('dbi:SQLite:dbname=:memory:', '', '', {
+		RaiseError => 1,
+	});
+
+	$dbh->do('CREATE TABLE hosts (name VARCHAR, realm VARCHAR)');
+	$dbh->do('CREATE TABLE realms (realm VARCHAR, remote_kind VARCHAR)');
+	$dbh->do('CREATE TABLE realm_trusts (' .
+	    'realm VARCHAR, trusted_realm VARCHAR)');
+	$dbh->do('INSERT INTO hosts VALUES (?, ?)', undef, $host, $host_realm);
+	$dbh->do('INSERT INTO realms VALUES (?, ?)', undef,
+	    $windows_realm, $kind);
+	$dbh->do('INSERT INTO realms VALUES (?, NULL)', undef, $destination);
+	$dbh->do('INSERT INTO realm_trusts VALUES (?, ?)', undef,
+	    $destination, $windows_realm) if !$args{no_trust};
+
+	return bless({
+		client => $args{client},
+		ctx => $ctx,
+		dbh => $dbh,
+		hosts => {$host => {realm => $host_realm}},
+	}, 'Test::FetchTicketsACL');
+}
 
 sub fetch_acl {
 	my (%args) = @_;
-	my $kmdb = bless({
-		client => $args{client},
-		ctx => $ctx,
-		hosts => $args{hosts} || {
-			$fqdn => { realm => $windows_realm },
-		},
-		win_xrealm_bootstrap => $args{map},
-	}, 'Test::FetchTicketsACL');
+	my $host = $args{host} // 'host.example';
+	my $db = make_db(%args, host => $host);
 
-	return $kmdb->KHARON_ACL_fetch_tickets('fetch_tickets',
-	    $args{realm} || $destination,
-	    exists($args{host}) ? $args{host} : $fqdn);
+	return $db->KHARON_ACL_fetch_tickets('fetch_tickets',
+	    $destination, $host);
 }
 
+is(fetch_acl(client => 'HOST$@WINDOWS.REALM'), 1,
+    'first Windows host is allowed');
 is(fetch_acl(
-	client => 'HOSTNAME$@WINDOWS.REALM',
-	map => { 'hostname$@WINDOWS.REALM' => [$target] },
-), 1, 'canonical Windows machine account with exact mapping is allowed');
+	client => 'SECOND$@WINDOWS.REALM',
+	host => 'second.example',
+), 1, 'second Windows host is allowed without configuration');
 
+is(fetch_acl(client => 'OTHER$@WINDOWS.REALM'), 1,
+    'Windows realm machine account is allowed');
 ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	host => undef,
-	map => { 'hostname$@WINDOWS.REALM' => [$target] },
-)), 'Windows machine account cannot imply the target host');
-
+	client => 'HOST$@WINDOWS.REALM',
+	kind => 'unix',
+)), 'machine account from a non-Windows realm is denied');
 ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	map => {},
-)), 'missing Windows mapping is denied');
+	client => 'HOST$@WINDOWS.REALM',
+	no_trust => 1,
+)), 'untrusted Windows realm is denied');
 
-ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	map => {
-		'hostname$@WINDOWS.REALM' => [
-			'host/other.example@ASGARD.REALM',
-		],
-	},
-)), 'mapping for a different host is denied');
-
-ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	realm => 'OTHER.REALM',
-	map => { 'hostname$@WINDOWS.REALM' => [$target] },
-)), 'mapping for a different destination realm is denied');
-
-ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	map => { 'hostname$@WINDOWS.REALM' => [$target] },
-	hosts => { $fqdn => { realm => 'OTHER.REALM' } },
-)), 'host realm mismatch denies Windows machine account');
-
-ok(!defined(fetch_acl(
-	client => 'hostname$@WINDOWS.REALM',
-	map => { 'hostname$@WINDOWS.REALM' => [$target] },
-	hosts => {},
-)), 'missing host record denies Windows machine account');
-
-ok(!defined(fetch_acl(
-	client => 'hostname@WINDOWS.REALM',
-	map => { 'hostname@WINDOWS.REALM' => [$target] },
-)), 'one-component principal without dollar suffix is denied');
-
-is(fetch_acl(
-	client => "host/$fqdn\@WINDOWS.REALM",
-	map => {},
-), 1, 'ordinary matching host principal remains allowed');
-
-is(fetch_acl(
-	client => "host/$fqdn\@WINDOWS.REALM",
-	host => undef,
-	map => {},
-), 1, 'ordinary host principal still implies its target host');
-
-ok(!defined(fetch_acl(
-	client => "host/other.example\@WINDOWS.REALM",
-	map => {},
-)), 'ordinary host principal cannot fetch for another host');
+my $db = make_db(
+	client => 'LOCALHOST$@WINDOWS.REALM',
+	host => 'localhost',
+);
+is($db->acl_keytab('create', "host/localhost\@$destination"), 1,
+    'Windows machine account may bootstrap its host key');
 
 done_testing();
