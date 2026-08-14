@@ -1,3 +1,9 @@
+libkrb5admin-perl (0.5.2-1) unstable; urgency=medium
+
+  * Do not send a hostname when fetching prestashed tickets.
+
+ -- Roland C. Dowdeswell <elric@imrryr.org>  Fri, 14 Aug 2026 09:59:59 +0100
+
 libkrb5admin-perl (0.5.1-1) unstable; urgency=medium
 
   * Support configurable prestash realms and source principals.

@@ -1,5 +1,5 @@
 Name:           libkrb5admin-perl
-Version:        0.5.1
+Version:        0.5.2
 Release:        1%{?dist}
 Summary:        Perl Kerberos administration library and tools
 License:        MIT
@@ -184,6 +184,9 @@ fi
 %{_mandir}/man8/krb5_admind.8*
 
 %changelog
+* Fri Aug 14 2026 Roland C. Dowdeswell <elric@imrryr.org> - 0.5.2-1
+- Do not send a hostname when fetching prestashed tickets.
+
 * Thu Aug 13 2026 Roland C. Dowdeswell <elric@imrryr.org> - 0.5.1-1
 - Support configurable cross-realm prestash sources.
 
