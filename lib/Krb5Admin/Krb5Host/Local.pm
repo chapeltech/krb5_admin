@@ -611,7 +611,7 @@ sub install_cert_in_dir {
 }
 
 sub fetch_tickets_realm {
-	my ($self, $clnt, $realm, $host) = @_;
+	my ($self, $clnt, $realm) = @_;
 	my $ctx = $self->{ctx};
 	my @errs;
 
@@ -621,7 +621,7 @@ sub fetch_tickets_realm {
 		$kmdb = Krb5Admin::Client->new($clnt, {realm=>$realm});
 	}
 
-	my $tix = $kmdb->fetch_tickets($realm, $host);
+	my $tix = $kmdb->fetch_tickets($realm);
 
 	for my $princstr (keys %$tix) {
 		my @princ = Krb5Admin::C::krb5_parse_name($ctx, $princstr);
@@ -676,7 +676,7 @@ sub fetch_tickets {
 
 		eval {
 			$self->{locks}->run_with_exlock(":::PRESTASH:::",
-			    \&fetch_tickets_realm, $self, $clnt, $realm, $fqdn);
+			    \&fetch_tickets_realm, $self, $clnt, $realm);
 		};
 		push(@errs, $@) if $@;
 	}

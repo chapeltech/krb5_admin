@@ -28,10 +28,9 @@ use warnings;
 	}
 
 	sub run_with_exlock {
-		my ($self, $name, $cmd, $host, $client, $realm, $fqdn) = @_;
+		my ($self, $name, $cmd, $host, $client, $realm) = @_;
 		push(@{$self->{calls}}, {
 			client => $client,
-			fqdn => $fqdn,
 			realm => $realm,
 		});
 	}
@@ -120,17 +119,14 @@ $host->fetch_tickets();
 is_deeply({ map { $_->{realm} => $_ } @{$locks->calls()} }, {
 	'CONFIG.ONE' => {
 		client => 'host/host.example',
-		fqdn => 'host.example',
 		realm => 'CONFIG.ONE',
 	},
 	'CONFIG.TWO' => {
 		client => 'hostname$@WINDOWS.REALM',
-		fqdn => 'host.example',
 		realm => 'CONFIG.TWO',
 	},
 	'CONFIG.THREE' => {
 		client => 'host/host.example',
-		fqdn => 'host.example',
 		realm => 'CONFIG.THREE',
 	},
 }, 'configured scalar/hash entries select sources');
@@ -140,12 +136,10 @@ $host->fetch_tickets(qw/EXPLICIT.ONE CONFIG.TWO/);
 is_deeply($locks->calls(), [
 	{
 		client => 'host/host.example',
-		fqdn => 'host.example',
 		realm => 'EXPLICIT.ONE',
 	},
 	{
 		client => 'hostname$@WINDOWS.REALM',
-		fqdn => 'host.example',
 		realm => 'CONFIG.TWO',
 	},
 ], 'explicit API realms retain configured source principals');
@@ -155,7 +149,6 @@ $host->internal_set_opt(prestash_realms => []);
 $host->fetch_tickets();
 is_deeply($locks->calls(), [{
 	client => 'host/host.example',
-	fqdn => 'host.example',
 	realm => 'DEFAULT.REALM',
 }],
     'empty configured realm list preserves default-realm behavior');
@@ -176,13 +169,13 @@ my @connections;
 		local => 0,
 	}, 'Test::PrestashHost');
 	$remote_host->fetch_tickets_realm('hostname$@WINDOWS.REALM',
-	    'CONFIG.TWO', 'host.example');
+	    'CONFIG.TWO');
 }
 is_deeply(\@connections, [[
 	'hostname$@WINDOWS.REALM',
 	{ realm => 'CONFIG.TWO' },
 ]], 'remote client authenticates with the selected source principal');
-is_deeply($remote_kmdb->calls(), [[qw/CONFIG.TWO host.example/]],
-    'remote fetch receives the destination realm and explicit FQDN');
+is_deeply($remote_kmdb->calls(), [[qw/CONFIG.TWO/]],
+	'remote fetch receives only the destination realm');
 
 done_testing();
