@@ -1960,6 +1960,16 @@ sub install_key {
 	my $kmdb = $self->get_hostbased_kmdb($princ->[0], $princ->[2]);
 	die "Cannot connect to KDC.\n"	if !$kmdb;
 
+	my $cluster;
+	if ($princ->[2] ne $self->{myname}
+	    && defined($cluster = $kmdb->query_hostmap($princ->[2]))
+	    && grep($_ eq $self->{myname}, @$cluster)) {
+		$self->reset_hostbased_kmdb();
+		$kmdb = $self->get_hostbased_kmdb($princ->[0],
+		    $self->{myname});
+		die "Cannot connect to KDC.\n"	if !$kmdb;
+	}
+
 	#
 	# XXXrcd: for now we "eval" the KDC side locking as it may not
 	#         be implemented.  If the function is not implemented,
