@@ -58,6 +58,34 @@ $sqlacl->set_dbh($kmdb->get_dbh());
 $kmdb->drop_db();
 $kmdb->init_db();
 
+# Bifrost owns this schema in production.  Install its current shape in the
+# shared test database so notification-producing mutations exercise enqueue.
+my $dbh = $kmdb->get_dbh();
+$dbh->do(qq{
+	CREATE TABLE actions (
+		action_id INTEGER PRIMARY KEY AUTOINCREMENT,
+		action_type VARCHAR NOT NULL,
+		target_type VARCHAR NOT NULL,
+		target_name VARCHAR NOT NULL,
+		state VARCHAR NOT NULL DEFAULT 'queued',
+		attempts INTEGER NOT NULL DEFAULT 0,
+		not_before INTEGER,
+		created_at INTEGER NOT NULL DEFAULT
+		    (CAST(strftime('%s','now') AS INTEGER)),
+		updated_at INTEGER NOT NULL DEFAULT
+		    (CAST(strftime('%s','now') AS INTEGER)),
+		claimed_at INTEGER,
+		completed_at INTEGER,
+		last_error VARCHAR,
+		payload VARCHAR
+	)
+});
+$dbh->do(qq{
+	CREATE UNIQUE INDEX actions_queued_unique
+	    ON actions(action_type, target_type, target_name)
+	 WHERE state = 'queued'
+});
+
 $kmdb->add_acl($creds, 'krb5');
 $kmdb->add_acl($creds_normal, 'krb5');
 

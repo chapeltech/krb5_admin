@@ -164,6 +164,7 @@ apt-get install -y --no-install-recommends \
   "$dependency_dir"/*.deb "$client_package" "$hostd_package" \
   "$prestash_package" "$refresh_package"
 perl -MKrb5Admin::Client -e 1
+perl -MKrb5Admin::ActionQueue -e 1
 command -v krb5_admin
 command -v krb5_host
 command -v krb5_hostd

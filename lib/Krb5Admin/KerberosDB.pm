@@ -17,7 +17,7 @@ use Data::Dumper;
 use Krb5Admin::FileLocks;
 use Krb5Admin::IVFuncs;
 use Krb5Admin::Utils qw/reverse_the host_list unparse_princ/;
-use Krb5Admin::NotifyClient qw/notify_update_required/;
+use Krb5Admin::ActionQueue qw/enqueue_prestash_delivery/;
 use Krb5Admin::C;
 use Kharon::Entitlement::ACLFile;
 use Kharon::Entitlement::Equals;
@@ -2368,31 +2368,18 @@ sub modify_host {
 
 		$self->can_user_act("Can't create logical hosts you don't own",
 		    $self->{client}, "modify_host", $host);
+
+		my @notify_hosts;
+		push(@notify_hosts, @{$args{add_member}})
+		    if defined($args{add_member});
+		push(@notify_hosts, @{$args{member}})
+		    if defined($args{member});
+		enqueue_prestash_delivery($dbh, @notify_hosts);
+		$dbh->commit();
 	};
 	my $err = $@;
 	$self->{locks}->release_lock($host)		if $do_locking;
 	die $err if $err;
-
-	# Always commit before notify_update_required.
-	$dbh->commit();
-
-	#
-	# Cluster members have been added, its important for the
-	# new members to fetch their tickets now.  We are a little
-	# greedy about the updates that we request, because our
-	# information is imperfect by this stage.  This is a perfect
-	# use case for DB triggers.
-
-	my @notify_hosts;
-	push(@notify_hosts, @{$args{add_member}}) if defined($args{add_member});
-	push(@notify_hosts, @{$args{member}})	  if defined($args{member});
-
-	for my $h (@notify_hosts) {
-		eval { notify_update_required($self, $h); };
-		if ($@) {
-		    print STDERR "$@";
-		}
-	}
 
 	return undef;
 }
@@ -2702,16 +2689,8 @@ sub insert_ticket {
 		}
 		push(@notify_hosts, $host);
 	}
-	# Always commit before notify_update_required.
+	enqueue_prestash_delivery($dbh, @notify_hosts);
 	$dbh->commit();
-	return undef if $self->{local};
-
-	for my $h (@notify_hosts) {
-		eval { notify_update_required($self, $h); };
-		if ($@) {
-			print STDERR "$@";
-		}
-	}
 
 	return undef;
 }
@@ -2757,9 +2736,7 @@ sub refresh_ticket {
 		die [500, 'Principal not configured on all hosts provided'];
 	}
 
-	for my $h (@hosts) {
-		eval { notify_update_required($self, $h); };
-	}
+	enqueue_prestash_delivery($dbh, @hosts);
 	return undef;
 }
 

@@ -3,6 +3,7 @@ ${PERL_VENDOR_LIB}/Krb5Admin.pm
 ${PERL_VENDOR_LIB}/CURVE25519_NWAY.pm
 ${PERL_VENDOR_ARCH}/auto/Krb5Admin/C/C.so
 ${PERL_VENDOR_LIB}/Krb5Admin/KerberosDB.pm
+${PERL_VENDOR_LIB}/Krb5Admin/ActionQueue.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Utils.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Daemon.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Client.pm

@@ -1,7 +1,8 @@
 #!/usr/pkg/bin/perl
 
-use Test::More tests => 44;
+use Test::More tests => 48;
 
+use DBI;
 use Krb5Admin::ForkClient;
 
 use Data::Dumper;
@@ -131,6 +132,28 @@ testObjC("Insert a ticket", $kmdb, [undef], 'insert_ticket', $proid3,
 	'baz.test.realm');
 testObjC("Insert a ticket", $kmdb, [undef], 'insert_ticket', $proid4,
 	'logical.test.realm');
+
+my $action_dbh = DBI->connect('dbi:SQLite:t/sqlite.db', '', '', {
+	RaiseError => 1, PrintError => 0, AutoCommit => 1,
+});
+is($action_dbh->selectrow_array(qq{
+	SELECT count(*) FROM actions
+	 WHERE target_name = 'bar.test.realm' AND state = 'queued'
+}), 1, "insert_ticket enqueues a logical host's physical member");
+testObjC("Temporarily remove a notified logical member", $kmdb,
+	[undef], 'remove_hostmap', 'logical.test.realm', 'bar.test.realm');
+$action_dbh->do(qq{
+	UPDATE actions SET state = 'done'
+	 WHERE target_name = 'bar.test.realm' AND state = 'queued'
+});
+testObjC("Existing logical member notification is asynchronous", $kmdb,
+	[undef], 'modify_host', 'logical.test.realm',
+	add_member => ['bar.test.realm']);
+is($action_dbh->selectrow_array(qq{
+	SELECT count(*) FROM actions
+	 WHERE target_name = 'bar.test.realm' AND state = 'queued'
+}), 1, "modify_host member+= enqueues a new durable action");
+$action_dbh->disconnect();
 
 #
 # Then we query the resulting state in various ways to ensure that everything
