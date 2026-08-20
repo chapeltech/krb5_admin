@@ -2704,6 +2704,7 @@ sub insert_ticket {
 	}
 	# Always commit before notify_update_required.
 	$dbh->commit();
+	return undef if $self->{local};
 
 	for my $h (@notify_hosts) {
 		eval { notify_update_required($self, $h); };
