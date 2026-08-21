@@ -21,9 +21,9 @@ use Krb5Admin::NotifyClient qw/notify_update_required/;
 use Krb5Admin::C;
 use Kharon::Entitlement::ACLFile;
 use Kharon::Entitlement::Equals;
-use Kharon::Entitlement::SimpleSQL;
 use Kharon::InputValidation qw(KHARON_IV_NO_ARGS KHARON_IV_ONE_SCALAR);
 
+use Krb5Admin::Entitlement::SimpleSQL;
 use Kharon::dbutils qw/sql_exec generic_query generic_modify/;
 use Kharon::utils qw/getclassvar/;
 
@@ -418,7 +418,7 @@ sub new {
 	# default way...
 
 	if (!defined($self->{sacls})) {
-		$self->{sacls} = Kharon::Entitlement::SimpleSQL->new(
+		$self->{sacls} = Krb5Admin::Entitlement::SimpleSQL->new(
 		    table => 'krb5_admin_simple_acls');
 	}
 	$self->{sacls}->set_dbh($dbh);

@@ -5,6 +5,7 @@ ${PERL_VENDOR_ARCH}/auto/Krb5Admin/C/C.so
 ${PERL_VENDOR_LIB}/Krb5Admin/KerberosDB.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Utils.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Daemon.pm
+${PERL_VENDOR_LIB}/Krb5Admin/Entitlement/SimpleSQL.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Client.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/Local.pm
 ${PERL_VENDOR_LIB}/Krb5Admin/FileLocks.pm

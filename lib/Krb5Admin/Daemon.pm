@@ -13,9 +13,9 @@ use Kharon::Entitlement::ACLFile;
 use Kharon::Entitlement::Equals;
 use Kharon::Entitlement::Object;
 use Kharon::Entitlement::Stack;
-use Kharon::Entitlement::SimpleSQL;
 use Kharon::InputValidation::Object;
 
+use Krb5Admin::Entitlement::SimpleSQL;
 use Krb5Admin::KerberosDB;
 use Krb5Admin::Log;
 use Krb5Admin::Utils qw/load_config mk_kmdb_with_config/;
@@ -32,7 +32,7 @@ sub mk_kmdb {
 	my $objacl  = Kharon::Entitlement::Object->new();
 	push(@acls, $objacl);
 
-	my $sqlacl  = Kharon::Entitlement::SimpleSQL->new(
+	my $sqlacl  = Krb5Admin::Entitlement::SimpleSQL->new(
 	    table => 'krb5_admin_simple_acls');
 	$sqlacl->set_del_check(sub {
 		my $ret;

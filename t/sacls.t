@@ -1,6 +1,6 @@
 #!/usr/pkg/bin/perl
 
-use Test::More tests=> 4;
+use Test::More tests=> 5;
 
 use Data::Dumper;
 
@@ -49,3 +49,17 @@ $kmdb = mk_kmdb(CREDS => 'baz@TEST.REALM');
 
 eval { $kmdb->sacls_del('create', 'baz@TEST.REALM'); };
 ok($@, 'baz@TEST.REALM should not be able to relinquish privs...');
+
+eval {
+	$kmdb = mk_kmdb(CREDS => 'admin_user@TEST.REALM');
+	$kmdb->create_group('sacl-admins',
+	    owner => ['admin_user@TEST.REALM']);
+	$kmdb->modify_group('sacl-admins',
+	    add_member => ['baz@TEST.REALM']);
+	$kmdb->sacls_add('create_user', 'sacl-admins');
+
+	$kmdb = mk_kmdb(CREDS => 'baz@TEST.REALM');
+	$kmdb->create_user('group-sacl-user@TEST.REALM');
+};
+ok(!$@, 'group member inherits the group SACL.');
+diag(Dumper($@)) if $@;
