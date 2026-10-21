@@ -1695,62 +1695,67 @@ sub change {
 	my $passwd = $self->generate_ecdh_key2($args{public});
 
 	Krb5Admin::C::krb5_setpass($ctx, $hndl, $name, $kvno, $args{enctypes},
-	    $passwd);
+	    $passwd, $args{keepold} // 0);
 
 	return undef;
 }
 
 sub KHARON_IV_change_passwd {
-	my ($self, $cmd, $name, $passwd, $opt) = @_;
-	my $usage = "change_passwd <princ> [<passwd> [+needchange]]";
+	my ($self, $cmd, $name, $passwd, @opts) = @_;
+	my $usage = "change_passwd <princ> [<passwd> [+needchange] [+keepold]]";
 
 	require_scalar($usage, 1, $name);
 	if (defined($passwd)) {
 		require_scalar($usage, 2, $passwd);
 	}
-	if (defined($opt)) {
+	for my $opt (@opts) {
 		require_scalar($usage, 3, $opt);
+		die [503, "Unknown change_passwd option: $opt"]
+		    if $opt ne '+needchange' && $opt ne '+keepold';
 	}
 
 	return undef;
 }
 
 sub change_passwd {
-	my ($self, $name, $passwd, $opt) = @_;
+	my ($self, $name, $passwd, @opts) = @_;
 	my $ctx = $self->{ctx};
 	my $hndl = $self->{hndl};
+	my %opts = map { $_ => 1 } @opts;
+	my $keepold = $opts{'+keepold'} // 0;
 
 	if (defined($passwd)) {
-		Krb5Admin::C::krb5_setpass($ctx, $hndl, $name, -1, [], $passwd);
+		Krb5Admin::C::krb5_setpass($ctx, $hndl, $name, -1, [],
+		    $passwd, $keepold);
 	} else {
-		$passwd = Krb5Admin::C::krb5_randpass($ctx, $hndl, $name, []);
+		$passwd = Krb5Admin::C::krb5_randpass($ctx, $hndl, $name, [],
+		    $keepold);
 	}
 
-	return $passwd if !defined($opt);
-
-	if ($opt eq '+needchange') {
-		$self->internal_modify($name, {attributes => [ $opt ]});
+	if ($opts{'+needchange'}) {
+		$self->internal_modify($name, {attributes => ['+needchange']});
 	}
 
 	return $passwd;
 }
 
 sub KHARON_IV_reset_passwd {
-	my ($self, $cmd, $name) = @_;
+	my ($self, $cmd, $name, @opts) = @_;
+	my $usage = "reset_passwd <princ> [+keepold]";
 
-	require_scalar("reset_passwd <princ>", 1, $name);
+	require_scalar($usage, 1, $name);
+	for my $opt (@opts) {
+		require_scalar($usage, 2, $opt);
+		die [503, "Unknown reset_passwd option: $opt"]
+		    if $opt ne '+keepold';
+	}
 	return undef;
 }
 
 sub reset_passwd {
-	my ($self, $name) = @_;
-	my $ctx = $self->{ctx};
-	my $hndl = $self->{hndl};
+	my ($self, $name, @opts) = @_;
 
-	my $passwd = Krb5Admin::C::krb5_randpass($ctx, $hndl, $name, []);
-	$self->internal_modify($name, {attributes => [ '+needchange' ]});
-
-	return $passwd;
+	return $self->change_passwd($name, undef, @opts, '+needchange');
 }
 
 sub KHARON_IV_modify {

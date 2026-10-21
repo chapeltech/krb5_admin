@@ -674,7 +674,7 @@ done:
 
 char *
 krb5_randpass(krb5_context ctx, kadm5_handle hndl, char *in, int n_ks_tuple,
-	      krb5_key_salt_tuple *ks_tuple)
+	      krb5_key_salt_tuple *ks_tuple, int keepold)
 {
 	krb5_principal		 princ = NULL;
 	kadm5_ret_t		 ret;
@@ -686,7 +686,7 @@ krb5_randpass(krb5_context ctx, kadm5_handle hndl, char *in, int n_ks_tuple,
 
 	passwd = random_passwd(ctx, PROID_PASSWD_SIZE);
 	K5BAIL(krb5_parse_name(ctx, in, &princ));
-	K5BAIL(kadm5_chpass_principal_3(hndl, princ, FALSE, n_ks_tuple,
+	K5BAIL(kadm5_chpass_principal_3(hndl, princ, keepold, n_ks_tuple,
 	    ks_tuple, passwd));
 
 done:
@@ -702,7 +702,8 @@ done:
 
 void
 krb5_setpass(krb5_context ctx, kadm5_handle hndl, char *in, int kvno,
-	     int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char *passwd)
+	     int n_ks_tuple, krb5_key_salt_tuple *ks_tuple, char *passwd,
+	     int keepold)
 {
 	krb5_principal		princ = NULL;
 	kadm5_ret_t		ret;
@@ -721,7 +722,7 @@ krb5_setpass(krb5_context ctx, kadm5_handle hndl, char *in, int kvno,
 		goto done;
 	}
 
-	K5BAIL(kadm5_chpass_principal_3(hndl, princ, FALSE, n_ks_tuple,
+	K5BAIL(kadm5_chpass_principal_3(hndl, princ, keepold, n_ks_tuple,
 	    ks_tuple, passwd));
 
 done:
@@ -742,7 +743,7 @@ done:
 }
 
 void
-krb5_randkey(krb5_context ctx, kadm5_handle hndl, char *in)
+krb5_randkey(krb5_context ctx, kadm5_handle hndl, char *in, int keepold)
 {
 	krb5_principal		princ = NULL;
 #if HAVE_MIT
@@ -764,10 +765,10 @@ krb5_randkey(krb5_context ctx, kadm5_handle hndl, char *in)
 	enctypes[0].ks_enctype  = ENCTYPE_AES256_CTS_HMAC_SHA1_96;
 	enctypes[0].ks_salttype = 0;
 
-	K5BAIL(kadm5_randkey_principal_3(hndl, princ, FALSE, 1, enctypes,
+	K5BAIL(kadm5_randkey_principal_3(hndl, princ, keepold, 1, enctypes,
 	    NULL, NULL));
 #else
-	K5BAIL(kadm5_randkey_principal_3(hndl, princ, FALSE, 0, NULL,
+	K5BAIL(kadm5_randkey_principal_3(hndl, princ, keepold, 0, NULL,
 	    NULL, NULL));
 #endif
 

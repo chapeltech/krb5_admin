@@ -809,4 +809,8 @@ done:
 
 %}
 
+%typemap(default) int keepold {
+	$1 = 0;
+}
+
 %include C.h

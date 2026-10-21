@@ -190,10 +190,25 @@ The key value pairs are the same as for
 will create a principal with a random temporary password which is printed
 to stdout. The password must be reset by the user via
 .Xr kpasswd 1 .
-.It reset_passwd Ar princ
+.It change_passwd Ar princ Oo Ar passwd Oo +needchange Oc Oo +keepold Oc Oc
+changes the password of a principal to
+.Ar passwd ,
+or a generated password if omitted, and prints it to stdout.
+The
+.Li +needchange
+option requires the user to change the password on their next login.
+The
+.Li +keepold
+option retains previous keys and their KVNOs so existing tickets remain usable.
+Without it, previous keys are discarded.
+.It reset_passwd Ar princ Op +keepold
 will reset the password of a principal to a random temporary password
 which is printed to stdout. The password must be reset by the user via
 .Xr kpasswd 1 .
+The
+.Li +keepold
+option retains previous keys as for
+.Li change_passwd .
 .It modify Ar princ Oo Ar key=val ... Oc
 will modify a principal or its associated attributes.
 .It is_owner Ar princ Ar appid
@@ -204,6 +219,11 @@ is one of the owners of
 This test follows group membership.
 There is no output, the return value is set.
 .El
+.Pp
+For example, to rotate a realm's TGT key while retaining the previous keys:
+.Bd -literal -offset indent
+krb5_admin -l change_passwd 'krbtgt/A@A' 'NEW-PASSWORD' +keepold
+.Ed
 .Pp
 .Ss Policies
 Commands that operate on policies:

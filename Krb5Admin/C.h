@@ -181,10 +181,10 @@ void	  write_kt(krb5_context, char *, krb5_keytab_entry *);
 void	  kt_remove_entry(krb5_context, char *, krb5_keytab_entry *);
 void	  krb5_setkey(krb5_context, kadm5_handle, char *, int, krb5_keyblock *);
 void	  krb5_setpass(krb5_context, kadm5_handle, char *, int, int,
-		       krb5_key_salt_tuple *, char *);
+		       krb5_key_salt_tuple *, char *, int keepold);
 char	 *krb5_randpass(krb5_context, kadm5_handle, char *, int,
-			krb5_key_salt_tuple *);
-void	  krb5_randkey(krb5_context, kadm5_handle, char *);
+			krb5_key_salt_tuple *, int keepold);
+void	  krb5_randkey(krb5_context, kadm5_handle, char *, int keepold);
 char	**krb5_get_kdcs(krb5_context, char *);
 char	 *krb5_get_realm(krb5_context);
 char	**krb5_list_princs(krb5_context, kadm5_handle, char *);
